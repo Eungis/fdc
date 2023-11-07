@@ -1,2 +1,2 @@
-# fdc
-personal workplace to log sth learned
+# FDC
+- personal workplace to log sth learned
