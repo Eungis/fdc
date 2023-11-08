@@ -181,7 +181,7 @@ cython_debug/
 *.jsonl
 
 # folder
-*/data
+**/data
 **/secret
 
 # other
