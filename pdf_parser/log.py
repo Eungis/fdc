@@ -1,4 +1,3 @@
-import logging
 import sys
 from datetime import (
     datetime,
@@ -31,7 +30,7 @@ def set_logger(
     level: Union[str, int] = "INFO",
     backtrace: bool = True,
     diagnose: bool = False,
-    to_file: bool = False
+    to_file: bool = False,
 ):
     """Call `set_logger` once to set `loguru` logging at the top of the main script.
     Usages:
@@ -76,8 +75,4 @@ def set_logger(
     )
     if to_file:
         filename = f"fdc_{now()}.log"
-        log.add(
-            filename,
-            format=DEFAULT_LOGURU_FORMAT,
-            level="DEBUG"
-        )
+        log.add(filename, format=DEFAULT_LOGURU_FORMAT, level="DEBUG")
