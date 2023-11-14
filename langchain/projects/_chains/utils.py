@@ -1,7 +1,7 @@
 import time
 from functools import wraps
 
-from chains import IRChain
+from _chains.chains import IRChain
 from prompts import DOCUMENT_PROMPT
 from langchain.memory import ConversationBufferWindowMemory
 from langchain.prompts.base import BasePromptTemplate

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any
+from typing import Any, List, Tuple
 from langchain.callbacks.manager import CallbackManagerForChainRun, AsyncCallbackManagerForChainRun
 from langchain.chains import LLMChain
 from langchain.prompts.base import BasePromptTemplate
@@ -92,13 +92,13 @@ class IRChain(LLMChain):
         allow_population_by_field_name = True
 
     @property
-    def input_keys(self) -> list[str]:
+    def input_keys(self) -> List[str]:
         """Exclude document_variable_name from the input_variables to avoid validation error."""
         self.prompt = self.prompt.partial(**{self.document_variable_name: ""})
         return self.prompt.input_variables
 
     @property
-    def output_keys(self) -> list[str]:
+    def output_keys(self) -> List[str]:
         """Return the output keys."""
         _output_keys = [self.output_key]
         return _output_keys
@@ -109,7 +109,7 @@ class IRChain(LLMChain):
         inputs: dict[str, Any],
         *,
         run_manager: CallbackManagerForChainRun,
-    ) -> list[Document]:
+    ) -> List[Document]:
         """Get relevant documents."""
         docs = self.retriever.get_relevant_documents(question, callbacks=run_manager.get_child())
         return docs
@@ -120,7 +120,7 @@ class IRChain(LLMChain):
         inputs: dict[str, Any],
         *,
         run_manager: AsyncCallbackManagerForChainRun,
-    ) -> list[Document]:
+    ) -> List[Document]:
         """Get relevant documents."""
         docs = await self.retriever.aget_relevant_documents(question, callbacks=run_manager.get_child())
         return docs
@@ -141,7 +141,7 @@ class IRChain(LLMChain):
         response = await self.agenerate([inputs], run_manager=run_manager)
         return self.create_outputs(response)[0]
 
-    def _get_inputs(self, docs: list[Document]) -> str:
+    def _get_inputs(self, docs: List[Document]) -> str:
         """Construct document_variable_name.
 
         Args:
@@ -158,7 +158,7 @@ class IRChain(LLMChain):
             doc_strings = self.document_prompt_if_no_docs_found
         return doc_strings
 
-    def create_outputs(self, llm_result: LLMResult) -> list[dict[str, Any]]:
+    def create_outputs(self, llm_result: LLMResult) -> List[dict[str, Any]]:
         """Create outputs from response."""
         result = [
             # Get the text of the top generated string.
@@ -175,7 +175,7 @@ class IRChain(LLMChain):
 
     def generate(
         self,
-        input_list: list[dict[str, Any]],
+        input_list: List[dict[str, Any]],
         run_manager: CallbackManagerForChainRun | None = None,
     ) -> LLMResult:
         _run_manager = run_manager or CallbackManagerForChainRun.get_noop_manager()
@@ -207,7 +207,7 @@ class IRChain(LLMChain):
 
     async def agenerate(
         self,
-        input_list: list[dict[str, Any]],
+        input_list: List[dict[str, Any]],
         run_manager: AsyncCallbackManagerForChainRun | None = None,
     ) -> LLMResult:
         _run_manager = run_manager or CallbackManagerForChainRun.get_noop_manager()
@@ -239,10 +239,10 @@ class IRChain(LLMChain):
 
     def prep_prompts(
         self,
-        input_list: list[dict[str, Any]],
-        doc_strings_list: list[str],
+        input_list: List[dict[str, Any]],
+        doc_strings_list: List[str],
         run_manager: CallbackManagerForChainRun | None = None,
-    ) -> tuple[list[PromptValue], list[str] | None]:
+    ) -> Tuple[List[PromptValue], List[str] | None]:
         stop = None
         if len(input_list) == 0:
             return [], stop
@@ -265,10 +265,10 @@ class IRChain(LLMChain):
 
     async def aprep_prompts(
         self,
-        input_list: list[dict[str, Any]],
-        doc_strings_list: list[str],
+        input_list: List[dict[str, Any]],
+        doc_strings_list: List[str],
         run_manager: AsyncCallbackManagerForChainRun | None = None,
-    ) -> tuple[list[PromptValue], list[str] | None]:
+    ) -> Tuple[List[PromptValue], List[str] | None]:
         stop = None
         if len(input_list) == 0:
             return [], stop
