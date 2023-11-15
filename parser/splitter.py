@@ -121,7 +121,8 @@ def get_chunks(txt, tags):
     chunks = []
     for tag in tags:
         _start, _end = tag.indice
-        chunks += [Chunk(indice=(start, _start), content=txt[start:_start])]
+        if start != _start:
+            chunks += [Chunk(indice=(start, _start), content=txt[start:_start])]
         chunks += [Chunk(indice=(_start, _end), content=txt[_start:_end])]
         start = _end
     return chunks
