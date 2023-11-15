@@ -148,6 +148,7 @@ if __name__ == "__main__":
 
     with open("../data/html_ex.txt", "r") as f:
         data = f.read()
+        print(data)
 
     txt = make_data(data)
 
@@ -164,5 +165,6 @@ if __name__ == "__main__":
     update_tags(tags)
     tags = get_no_parent_tags(tags)
     chunks = get_chunks(txt, tags)
+    print("Get chunking done")
 
     assert "".join([chunk.content for chunk in chunks]) == txt
