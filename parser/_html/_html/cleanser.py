@@ -1,13 +1,14 @@
-import re
 from typing import List, Tuple
 from bs4 import BeautifulSoup
 from _html.constant import DEFAULT_VALID_ATTRS, DEFAULT_VALID_TAGS
 
 
-class HTMLCleanser:
+class Cleanser(object):
     def __init__(self, valid_tags: List[str] = None, valid_attrs: List[str] = None):
+        # Initialize valid_tags and valid_attrs
         self.__valid_tags = DEFAULT_VALID_TAGS if valid_tags is None else valid_tags
         self.__valid_attrs = DEFAULT_VALID_ATTRS if valid_attrs is None else valid_attrs
+
         print(f"""valid_tags: {self.__valid_tags}\nvalid_attrs: {self.__valid_attrs}""")
 
     @property
@@ -56,11 +57,6 @@ class HTMLCleanser:
         invalid_attrs = [attr for attr in attrs if attr not in self.valid_attrs]
         return (invalid_tags, invalid_attrs)
 
-    def _cleanse_soup_tags(self, doc: str) -> str:
-        pat = re.compile(r"<.*html>|<*.body>")
-        doc = re.sub(pat, "", doc)
-        return doc.strip()
-
     def cleanse_html(self, soup: BeautifulSoup) -> str:
         """Cleanse out the invalid_tags and invalid_attrs inside the html (BeautifulSoup object)."""
 
@@ -82,7 +78,4 @@ class HTMLCleanser:
             if tag.name != "img" and len(tag.get_text(strip=True)) == 0:
                 tag.extract()
 
-        doc = soup.prettify()
-        doc = self._cleanse_soup_tags(doc)
-
-        return doc
+        return soup
