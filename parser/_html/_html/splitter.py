@@ -234,8 +234,9 @@ class HTMLSplitter(object):
             List of chunks
         """
 
-        def make_rows_as_table(soup, rows):
+        def make_rows_as_table(soup, th_rows, rows):
             table = soup.new_tag("table")
+            table.extend(th_rows)
             table.extend(rows)
             return table
 
@@ -243,15 +244,20 @@ class HTMLSplitter(object):
             soup = BeautifulSoup(chunk.content, "lxml")
             table = soup.find("table")
 
+            # separate rows with general `rows` and `th rows`
             all_rows = table.find_all("tr")
+            th_rows = []
+            for i, row in enumerate(all_rows):
+                if len(row.find_all("th")) > 0:
+                    th_rows += [all_rows.pop(i)]
 
             _chunks = []
             # divide the single chunk into chunks
             quotient = len(all_rows) // self.split_denominator
-
+            quotient = 1 if quotient == 0 else quotient
             for i in range(0, len(all_rows), quotient):
                 rows = all_rows[i : i + quotient]
-                new_table = make_rows_as_table(soup, rows)
+                new_table = make_rows_as_table(soup, th_rows, rows)
                 _chunks += [
                     Chunk(
                         indice=(0, 0),  # [TODO] how to specify indice
@@ -286,7 +292,13 @@ class HTMLSplitter(object):
                 # until length of each chunk does not exceed the token_max
                 while length is not None:
                     if n_trial > self.split_trial_max:
-                        raise ValueError(f"Chunk is not splittable. chunk: {chunk.indice}")
+                        raise ValueError(
+                            f"Chunk is not splittable even with {self.split_trial_max} trials.\n \
+The length of the splitted chunk is still longer than the token_max.\n \
+Increase the token_max, or see if the Chunk is splittable.\n \
+chunk indice: {chunk.indice}\n \
+chunk type: {chunk.metadata.get('type')}"
+                        )
                     splitted_chunks = self._split_chunk(chunk)
                     # count the num_token of splitted chunks
                     length = None
