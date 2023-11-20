@@ -2,44 +2,113 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from typing import Callable
-from dataclasses import dataclass
-from uuid import uuid4
+from typing import Callable, List
+from dataclasses import dataclass, field
 from bs4 import BeautifulSoup
 
 from _html.schema import Tag, Node, Chunk, Document
 
 
 @dataclass
-class Splitter(object):
+class HTMLSplitter(object):
     soup: BeautifulSoup
+    """BeautifulSoup object to parse."""
     length_func: Callable[[str], int]
+    """Length function to count the number of tokens."""
     token_max: int
-    chunk_size: int = 2
+    """Maximum token that a document can have."""
+    chunks: List[Chunk] = field(default_factory=list)
+    """List of splitted chunks."""
+    split_denominator: int = 2
+    """Denominator to use during _split_chunk."""
+    split_trial_max: int = 5
+    """Maximum number of trials to split the single chunk."""
+
+    """Separate the html soup object into the tags > nodes > chunks > documents.
+
+    Four schemas are defined and used: tag, node, chunk and document.
+    (it's completely different from the BeautifulSoup schema.)
+
+    - `tag` refers to the start or closed tag of the html. e.g. '<table>', '</p>'
+    - `node` refers to the html tag which has no parent tags above it.
+    cf. <html> and <body> tags are not thought of as parents.
+    - `chunk` refers to the chunk(part) of the document which may be the
+    part before, in-between, after the node; or the node itself.
+    - `document` refers to the combined chunks according to the token_max.
+
+    A single chunk of which length exceeds the token_max would be separated
+    into several chunks, and be made as multiple documents. See `split_chunks`
+    with more details;
+
+    A single chunk of which length does not exceed the token_max would be
+    fed to merge with the next chunk, continuously. When the length of
+    the merged chunks exceed the token_max, it would stop the cohesion and be
+    made as a single document. See `make_documents` with more details.
+
+    [Attention]
+    Internally, it uses regular expression to detect the html tags.
+    Therefore, if the text you provided contains the string '<{tag}>', which
+    is not true tag of the html, HTMLSplitter will be confused and identify it as
+    real tag, and result in the error.
+    (e.g. "<div>A real div tag</div>\nThis is the fake <div> tag.\n<div>Another real div tag</div>")
+
+    Example:
+        .. code-block:: python
+
+            from bs4 import BeautifulSoup
+            from _html.cleanser import HTMLCleanser
+            from _html.splitter import Splitter
+
+            soup = BeautifulSoup("YOUR_HTML", "lxml")
+            cleanser = HTMLCleanser()
+
+            # cleanse the html
+            soup = cleanser.cleanse_html(soup)
+
+            # split the soup html into the documents
+            splitter = Splitter(soup=soup, length_func=len, token_max=1500)
+            tags = splitter.get_tags_from_soup(soup)
+            chunks = splitter.get_chunks(tags)
+            new_chunks = splitter.split_chunks(chunks)
+            documents = splitter.make_documents(new_chunks)
+    """
+
+    def _cleanse_soup_tags(self) -> str:
+        html = self.soup.prettify().strip()
+        pat = re.compile(r"<.*html>|<*.body>")
+        html = re.sub(pat, "", html).strip()
+        return html
+
+    def get_tags_in_soup(self) -> List[str]:
+        tags = [tag.name for tag in self.soup.find_all()]
+        tags = list(set(tags))
+        return tags
 
     def __post_init__(self):
-        # get document from the BeautifulSoup object
-        doc = self.soup.prettify().strip()
-        self.doc = self._cleanse_soup_tags(doc)
+        self.html = self._cleanse_soup_tags()
+        self.tags = self.get_tags_in_soup()
 
-        # get all tags from the BeautifulSoup object
-        self.tags = [tag.name for tag in self.soup.find_all()]
-        self.tags = list(set(self.tags))
+    def find_nodes(self, tag: str) -> List[Node]:
+        """Find the nodes of which tag name is equal as given `tag`.
 
-        # initialize the node list and chunk list
-        self.nodes, self.chunks = [], []
+        Args:
+            soup: BeautifulSoup object
 
-    def _cleanse_soup_tags(self, doc: str) -> str:
-        pat = re.compile(r"<.*html>|<*.body>")
-        doc = re.sub(pat, "", doc)
-        return doc.strip()
+        Returns:
+            List of Nodes
 
-    def find_nodes(self, tag):
+        Example:
+            .. code-block:: python
+            txt="YOUR_HTML"
+            soup = BeautifulSoup(txt, 'lxml')
+            splitter = HTMLSplitter(soup, length_func=len, token_max=1500)
+            nodes = splitter.find_nodes('table')
+        """
         tag_counter = defaultdict(int)
         nodes = []
 
         pat = re.compile(rf"<.*{tag}>")
-        match = pat.search(self.doc)
+        match = pat.search(self.html)
 
         tags = []
         while match:
@@ -60,72 +129,86 @@ class Splitter(object):
                 indice = start.indice + end.indice
                 start_idx, end_idx = min(indice), max(indice)
                 tag_name = start.name
-                id = str(uuid4())
-                nodes += [Node(indice=(start_idx, end_idx), name=tag_name, metadata={"id": id})]
+                nodes += [Node(indice=(start_idx, end_idx), name=tag_name)]
                 # reset after chunking done
                 tags = []
                 tag_counter[matched_tag], tag_counter[pair_matched_tag] = 0, 0
-            match = pat.search(self.doc, match.start() + 1)
+            match = pat.search(self.html, match.start() + 1)
 
         return nodes
 
-    def _add_relationship_to_node(self, node) -> None:
+    def _find_parent_child_nodes(self, node: Node, nodes: List[Node]) -> None:
         start, end = node.indice
 
-        # get parent candidates
+        # initialize parent candidates
         parent_cands = []
         # exclude the self from the list
         # note. the node with the same name (tag name) cannot be its parent
-        _nodes = [_node for _node in self.nodes if _node != node and _node.name != node.name]
+        _nodes = [_node for _node in nodes if _node != node and _node.name != node.name]
         for _node in _nodes:
             _start, _end = _node.indice
             if _start < start and _end > end:
                 parent_cands += [_node]
 
-        # get neareast parent from the candidates
+        # find neareast parent from the candidates
         if len(parent_cands) > 0:
             parent = parent_cands[0]
             min_gap = abs(parent.indice[0] - start)
             for cand in parent_cands:
-                _gap = abs(cand.indice[0] - start)
-                if _gap < min_gap:
+                gap = abs(cand.indice[0] - start)
+                if gap < min_gap:
                     parent = cand
-                    min_gap = _gap
+                    min_gap = gap
 
             # add parent and child information to each other
-            parent.child += [node.metadata["id"]]
-            node.parent += [parent.metadata["id"]]
+            parent.child += [node]
+            node.parent += [parent]
 
-    def _get_node_from_id(self, id):
-        for node in self.nodes:
-            if id == node.metadata["id"]:
-                return node
-
-    def _update_nodes(self):
-        for node in self.nodes:
-            childs = [self._get_node_from_id(id) for id in node.child]
-            parents = [self._get_node_from_id(id) for id in node.parent]
-            childs = sorted(childs, key=lambda x: x.indice[0], reverse=False)
-            parents = sorted(parents, key=lambda x: x.indice[0], reverse=False)
+    def _sort_parent_child_nodes(self, nodes):
+        for node in nodes:
+            childs = sorted(node.child, key=lambda x: x.indice[0], reverse=False)
+            parents = sorted(node.parent, key=lambda x: x.indice[0], reverse=False)
 
             node.child = childs
             node.parent = parents
+        return nodes
 
-    def _get_no_parent_nodes(self):
-        _tags = [_tag for _tag in self.nodes if len(_tag.parent) == 0]
-        _tags = sorted(_tags, key=lambda x: x.indice[0], reverse=False)
-        return _tags
+    def _get_chunk_nodes(self, nodes):
+        # filter and get the nodes with no parents,
+        # which are considered as chunks of html.
+        _nodes = [node for node in nodes if len(node.parent) == 0]
+        _nodes = sorted(_nodes, key=lambda x: x.indice[0], reverse=False)
+        return _nodes
 
-    def get_chunks(self):
-        # get nodes of the tag in the document
+    def get_chunks(self) -> List[Chunk]:
+        """Split the html into several chunks.
+
+        Args:
+
+        Returns:
+            List of Chunks
+
+        Example:
+            .. code-block:: python
+            txt="YOUR_HTML"
+            soup = BeautifulSoup(txt, 'lxml')
+            splitter = HTMLSplitter(soup, length_func=len, token_max=1500)
+            chunks = splitter.get_chunks()
+            assert ''.join([chunk.content for chunk in chunks]) == splitter.html
+        """
+
+        # find nodes
+        nodes = []
         for tag in self.tags:
-            self.nodes.extend(self.find_nodes(tag))
+            nodes.extend(self.find_nodes(tag))
 
-        # update parent and child relationship
-        for node in self.nodes:
-            self._add_relationship_to_node(node)
-        self._update_nodes()
-        chunk_nodes = self._get_no_parent_nodes()
+        # update parent and child relationship of each node
+        for node in nodes:
+            self._find_parent_child_nodes(node, nodes)
+        # sort according to the start index of the child or parent nodes
+        nodes = self._sort_parent_child_nodes(nodes)
+        # get chunk_nodes
+        chunk_nodes = self._get_chunk_nodes(nodes)
 
         # append to chunks
         start = 0
@@ -133,59 +216,102 @@ class Splitter(object):
             _start, _end = node.indice
             if start != _start:
                 self.chunks += [
-                    Chunk(indice=(start, _start), content=self.doc[start:_start], metadata={"type": "string"})
+                    Chunk(indice=(start, _start), content=self.html[start:_start], metadata={"type": "string"})
                 ]
-            self.chunks += [Chunk(indice=(_start, _end), content=self.doc[_start:_end], metadata={"type": node.name})]
+            _type = re.sub(r"<|>", "", node.name)
+            self.chunks += [Chunk(indice=(_start, _end), content=self.html[_start:_end], metadata={"type": _type})]
             start = _end
 
         return self.chunks
 
-    def _split_chunk(self, chunk):
-        # split chunk into several parts and recombine them
-        if chunk.metadata["type"] == "<table>":
+    def _split_chunk(self, chunk: Chunk) -> List[Chunk]:
+        """Split a single chunk, of which length is larger than token_max,
+        into several parts, and recombine them at the end.into several chunks.
+
+        Args:
+            chunk: chunk of the document
+        Returns:
+            List of chunks
+        """
+
+        def make_rows_as_table(soup, rows):
+            table = soup.new_tag("table")
+            table.extend(rows)
+            return table
+
+        if chunk.metadata["type"] == "table":
             soup = BeautifulSoup(chunk.content, "lxml")
             table = soup.find("table")
 
             all_rows = table.find_all("tr")
 
             _chunks = []
-            for i in range(0, len(all_rows), self.chunk_size):
-                _chunk = all_rows[i: i + self.chunk_size]
-                # Create a new table for each chunk
-                new_table = soup.new_tag("table")
-                new_table.extend(_chunk)
+            # divide the single chunk into chunks
+            quotient = len(all_rows) // self.split_denominator
 
+            for i in range(0, len(all_rows), quotient):
+                rows = all_rows[i : i + quotient]
+                new_table = make_rows_as_table(soup, rows)
                 _chunks += [
                     Chunk(
                         indice=(0, 0),  # [TODO] how to specify indice
                         content=new_table.prettify(),
-                        metadata={"type": "<table>"},
+                        metadata={
+                            "type": "table",
+                            # "origin": table,
+                            # "row_indice": (i, i+quotient)
+                        },
                     )
                 ]
 
         return _chunks
 
-    def split_chunks(self, chunks):
-        prev_chunk_size = self.chunk_size
+    def split_chunks(self, chunks: List[Chunk]) -> List[Chunk]:
+        """Iterate over all the chunks and separate them
+        to guarantee that there is no any length of the chunk
+        exceeds the token_max
+
+        Args:
+            chunks: List of chunks
+        Returns:
+            List of chunks
+        """
         lengths = [self.length_func(chunk.content) for chunk in chunks]
         new_chunks = []
         for chunk, length in zip(chunks, lengths):
             if length > self.token_max:
-                # check single chunk exceeds the self.token_max
-                # if true: recursively split the chunk into several chunks according to the split_chunk function.
-                while length is not None and length > self.token_max:
+                n_trial = 1
+                # check single chunk exceeds the token_max
+                # if true, recursively split the chunk into several chunks
+                # until length of each chunk does not exceed the token_max
+                while length is not None:
+                    if n_trial > self.split_trial_max:
+                        raise ValueError(f"Chunk is not splittable. chunk: {chunk.indice}")
                     splitted_chunks = self._split_chunk(chunk)
-                    # count the maximum num_token of splitted chunks
-                    length = max([self.length_func(chunk.content) for chunk in splitted_chunks])
-                    # increase the chunk_size
-                    self.chunk_size += 1
-                self.chunk_size = prev_chunk_size
+                    # count the num_token of splitted chunks
+                    length = None
+                    for _chunk in splitted_chunks:
+                        chunk_length = self.length_func(_chunk.content)
+                        if chunk_length > self.token_max:
+                            length = chunk_length
+                    # increase the split_denominator and trial_cnt
+                    self.split_denominator += 1
+                    n_trial += 1
+
                 new_chunks.extend(splitted_chunks)
             else:
                 new_chunks.append(chunk)
         return new_chunks
 
-    def merge_into_documents(self, chunks):
+    def make_documents(self, chunks: List[Chunk]) -> List[Document]:
+        """Merge separated chunks into the set of documents
+        before putting into the retrieval model.
+
+        Args:
+            chunks: List of chunks
+        Returns:
+            List of documents
+        """
         new_docs = []
         _sub_chunks = []
         lengths = [self.length_func(chunk.content) for chunk in chunks]
