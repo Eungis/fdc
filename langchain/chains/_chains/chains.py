@@ -65,7 +65,7 @@ class IRChain(LLMChain):
                 "Answer the best as you can given the context: {context}"
             )
 
-            # Prepare IRRetriever
+            # Prepare IRRetriever (Below usage may be different)
             ir_model = IR()
             retriever = IRRetriever(ir_model=ir_model, top_k=5)
             retriever.load_project(project_name="{YOUR PROJECT NAME}", where="{YOUR DB TYPE}")
