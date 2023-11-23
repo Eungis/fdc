@@ -164,7 +164,7 @@ class HTMLSplitter(object):
             parent.child += [node]
             node.parent += [parent]
 
-    def _sort_parent_child_nodes(self, nodes):
+    def _sort_parent_child_nodes(self, nodes: List[Node]):
         for node in nodes:
             childs = sorted(node.child, key=lambda x: x.indice[0], reverse=False)
             parents = sorted(node.parent, key=lambda x: x.indice[0], reverse=False)
@@ -173,7 +173,7 @@ class HTMLSplitter(object):
             node.parent = parents
         return nodes
 
-    def _get_chunk_nodes(self, nodes):
+    def _get_chunk_nodes(self, nodes: List[Node]):
         # filter and get the nodes with no parents,
         # which are considered as chunks of html.
         _nodes = [node for node in nodes if len(node.parent) == 0]
@@ -306,6 +306,7 @@ chunk type: {chunk.metadata.get('type')}"
                         chunk_length = self.length_func(_chunk.content)
                         if chunk_length > self.token_max:
                             length = chunk_length
+                            break
                     # increase the split_denominator and trial_cnt
                     self.split_denominator += 1
                     n_trial += 1
@@ -317,7 +318,10 @@ chunk type: {chunk.metadata.get('type')}"
 
     def make_documents(self, chunks: List[Chunk]) -> List[Document]:
         """Merge separated chunks into the set of documents
-        before putting into the retrieval model.
+        before putting into the llm model.
+        It takes into account of the token_max and merges the chunks
+        continuously, until the length of the merged chunks does not
+        exceed the token_max.
 
         Args:
             chunks: List of chunks
