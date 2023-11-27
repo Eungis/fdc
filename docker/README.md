@@ -1,4 +1,4 @@
-1. Basic concept of operation system
+## **1. Basic concept of operation system**
 
 operation system consists of two things: os kernel + software
 - os kernel is responsible for interacting with the underline hardware;
@@ -11,23 +11,52 @@ Then, what if an os do not share the same kernel as base?
 So you won't be able to run the windows based container on a docker host with linux on it, or vice versa.
 
 
-2. container vs. image
+## **2. container vs. image**
 - image: an image is a package or a template. it is used to create one or more containers.
 - container: a container is a running instance of image that is isolated and have their own environments and set of processes.
 
 
-3. Docker on Mac
+## **3. Docker on Mac**
 - Docker on Mac using Docker Toolbox
     - Docker on a linux VM
 - Docker Desktop on Mac
     - Use HyperKit virtualization technology
     - Still automatically install the linux system, and docker run on that system
     - run Linux container on mac (there is no mac based image or container)
+- Issue Collection
+    - 1. Unable to connect to the Docker Container from the host browser on MacOS
+        - issue explanation on github: [link](https://github.com/docker/for-mac/issues/2670)
 
 
-4. Docker basic command
 
-- docker run "image"
+
+
+## **4. Docker basic command**
+
+- basic command of docker
+    - List running containers
+        - `docker ps`
+    - List running + previously stopped containers
+        - `docker ps -a`
+    - Stop running container
+        - `docker stop {ID or NAME}`
+    - Remove permanantely docker container
+        - `docker rm {ID or NAME}`
+    - List docker images
+        - `docker images`
+    - Remove docker images
+        - ensure that no any containers are running off of that image before attempting to remove that image
+        - stop and delete all the dependent containers before rmove the images
+        - `docker rmi {ID or NAME}`
+    - See detail info of container
+        - `docker inspect {ID or NAME}`
+    - See logs at the background (container logs)
+        - `docker run -d redis`
+        - `docker logs {ID or NAME}`
+    - Pull image from docker hub
+        - `docker pull {NAME}`
+
+- details: docker run "image"
     - docker run "image" command download the image and execute the container, exit the container immediately, as there is no any process is running on that image at the beginning.
     - you can use the command below to sleep for 5 seconds after the execution.
         - `docker run ubuntu sleep 5`
@@ -80,29 +109,172 @@ So you won't be able to run the windows based container on a docker host with li
         - to persist the data, you would want to map a directory outside of the container of the docker host to the directory inside the container.
         - `docker run -v /opt/datadir:/var/lib/mysql mysql`
         - it implicitely mounts the directory.
-- pull image (vs. run)
-    - `docker pull {NAME}`
 
-- basic command of docker
-    - List running containers
-        - `docker ps`
-    - List running + previously stopped containers
-        - `docker ps -a`
-    - Stop running container
-        - `docker stop {ID or NAME}`
-    - Remove permanantely docker container
-        - `docker rm {ID or NAME}`
-    - List docker images
-        - `docker images`
-    - Remove docker images
-        - ensure that no any containers are running off of that image before attempting to remove that image
-        - stop and delete all the dependent containers before rmove the images
-        - `docker rmi {ID or NAME}`
-    - See detail info of container
-        - `docker inspect {ID or NAME}`
-    - See logs at the background (container logs)
-        - `docker run -d redis`
-        - `docker logs {ID or NAME}`
+    - docker run with env variables
+        - suppose there is a code inside the app.py file:
+            - `color = os.environ.get("APP_COLOR")`
+            - you can pass the env variables when running the docker:
+                - `docker run -e APP_COLOR="yellow"`
+            - you can check the env variables through the docker inspect command. there is a field called `Config`. with key "Env".
+
+- details: docker compose
+    ```command
+    docker run -d --name=redis redis
+    docker run -d --name=db postgres
+    docker run -d --name=vote -p 5000:80 --link redis:redis voting-app
+    docker run -d --name=result -p 5001:80 --link db:db result-app
+    docker run -d --name=worker --link db:db --link redis:redis worker
+    ```
+    All the instances are running, but it will not work if we do not spicify the --link option (which will be deprecated in the future. advanced concept in swarm and networking supports the better way to achieve the goal.)
+        - what this thing in fact is doing is, it creates an entry into the etc/hosts file on the voting-app container, adding an entrypoint with a host name `redis` with a internal ip of the `redis` container.
+
+
+    Let's write docker-compose.yml file:
+    ```yml
+    redis:
+        image: redis
+    db:
+        image: postgres:9.4
+    vote:
+        image: voting-app
+        ports:
+            - 5000:80
+        links:
+            - redis
+    result:
+        image: result-app
+        ports:
+            - 5001:80
+        links:
+            - db
+    worker:
+        image: worker
+        links:
+            - redis
+            - db
+    ```
+
+    Then bringing up the stack is very simple.
+    - run `docker compose up` command to bring up the entire application stack.
+
+    As the vote, result and worker are our own images, it doesn't necessarily exist in the docker hub. Instead, if we want to replace the pull command with the build command, you can change the part as below:
+    specify the location of the directory which contains the application code and dockerfile to build the docker image.
+    ```yml
+    vote:
+        build: ./vote
+        ports:
+            - 5000:80
+        links:
+            - redis
+    ```
+
+
+    - Different version of the docker compose file
+        - it evolves over the time.
+        - version.1
+            - the docker compose file we used earlier is the original version. there are in fact a number of limitations. for example, if you want to deploy your containers on the different network other than the default bridge network, there is no way to specify that. and no way to represent the dependencies.
+        - version.2
+            ```yml
+            version: 2
+            services:
+                redis:
+                    image: redis
+                    networks:
+                        - back-end
+                db:
+                    image: postgres:9.4
+                    networks:
+                        - back-end
+                vote:
+                    image: voting-app
+                    ports:
+                        - 5000:80
+                    depends_on:
+                        - redis
+                    networks:
+                        - front-end
+                        - back-end
+                result:
+                    image: result-app
+                    ports:
+                        - 5001:80
+                    networks:
+                        - front-end
+                        - back-end
+                worker:
+                    image: worker
+                    networks:
+                        - back-end
+            networks:
+                front-end:
+                back-end:
+            ```
+            - networking:
+                - with version.1, it attaches all the containers it runs on the default bridge network. then use links to enable communication between containers.
+                - with version.2, docker compose automatically create dedicated bridge network, and attaches all containers to that new network. all containers are then able to communicate with each other using each other's service name.
+                - with version.3, there is a depends_on property.
+        - version.3
+            ```yml
+            version: 3
+            services:
+                redis:
+                    image: redis
+                db:
+                    image: postgres:9.4
+                vote:
+                    image: voting-app
+                    ports:
+                        - 5000:80
+                    depends_on:
+                        - redis
+                result:
+                    image: result-app
+                    ports:
+                        - 5001:80
+                worker:
+                    image: worker
+            ```
+            - support docker swarm
+
+    - docker compose file examples: python application (example-voting-app)
+        - voting-app Dockerfile building example
+            ```docker
+            # Using official python runtime base image
+            FROM python:2.7-alpine
+
+            # Set the application directory
+            WORKDIR /app
+
+            # Install the requirements.txt
+            ADD requirements.txt /app/requirements.txt
+            RUN pip install -r requirements.txt
+
+            # Copy our code from the current folder to /app inside the container
+            ADD . /app
+
+            # Make port 80 available for links and/or publish
+            EXPOSE 80
+
+            # Define our command to be run when launching the container
+            CMD ["gunicorn", "app:app", "-b", "0.0.0.0:80", "--log-file", "-", "--access-logfile", "-", "--workers", "4", "--keep-alive", "0"]
+            ```
+        - if not use docker-compose, commands are as long as below:
+            ```command
+            docker build . Dockerfile -t voting-app
+            docker build . -t worker-app
+            docker build . -t result-app
+            docker run -d --name=redis redis
+
+            docker run -p 5001:80 --link redis:redis voting-app
+            docker run -d --name=db -it postgres:9.4 bash
+            docker run -d --link redis:redis --link db:db worker-app
+            docker run -p 5002:80 -d --link db:db result-app
+            ```
+        -
+
+
+
+
 
 ## **Practice**
 
@@ -112,6 +284,7 @@ So you won't be able to run the windows based container on a docker host with li
         - `docker run -d -p 8080:8080 jenkins/jenkins`
     - get the docker host ip:
         - `ipconfig getifaddr en0`
+            - or: `ifconfig | grep "inet " | grep -Fv 127.0.0.1 | awk '{print $2}'`
         - if you want to get the container ip address, use `docker inspect` command to see it.
     - access the ip outside:
         - ip address: ${ipconfig getifaddr en0}:8080
