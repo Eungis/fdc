@@ -28,10 +28,7 @@ So you won't be able to run the windows based container on a docker host with li
         - issue explanation on github: [link](https://github.com/docker/for-mac/issues/2670)
 
 
-
-
-
-## **4. Docker basic command**
+## **4. Docker Basic**
 
 - basic command of docker
     - List running containers
@@ -117,7 +114,7 @@ So you won't be able to run the windows based container on a docker host with li
                 - `docker run -e APP_COLOR="yellow"`
             - you can check the env variables through the docker inspect command. there is a field called `Config`. with key "Env".
 
-- details: docker compose
+- details: docker-compose
     ```command
     docker run -d --name=redis redis
     docker run -d --name=db postgres
@@ -210,8 +207,9 @@ So you won't be able to run the windows based container on a docker host with li
                 back-end:
             ```
             - networking:
+                - [compose-version](https://docs.docker.com/compose/compose-file/compose-versioning/)
                 - with version.1, it attaches all the containers it runs on the default bridge network. then use links to enable communication between containers.
-                - with version.2, docker compose automatically create dedicated bridge network, and attaches all containers to that new network. all containers are then able to communicate with each other using each other's service name.
+                - with version.2, docker compose automatically create dedicated bridge network, and attaches all containers to that new network. all containers are then able to communicate with each other using each other's service name (e.g., the vote app would be able to reach the redis app with the host name set as "redis").
                 - with version.3, there is a depends_on property.
         - version.3
             ```yml
@@ -221,6 +219,9 @@ So you won't be able to run the windows based container on a docker host with li
                     image: redis
                 db:
                     image: postgres:9.4
+                    environment:
+                        POSTGRES_USER: postgres
+                        POSTGRES_PASSWORD: postgres
                 vote:
                     image: voting-app
                     ports:
@@ -270,10 +271,132 @@ So you won't be able to run the windows based container on a docker host with li
             docker run -d --link redis:redis --link db:db worker-app
             docker run -p 5002:80 -d --link db:db result-app
             ```
-        -
+        - use docker compose to deploy complex application stack:
+            - install docker compose separately; it's not installed by default when you install docker on the dockerhost.
+                - step.1: create a docker-compose.yml file (refer to the above)
+                - step.2: `docker-compose up`
+                    - as you can see, whichever directory you are in, the containers will be created with the name with the prefix {directory_name}.
+
+- details: docker registry
+    - image: nginx
+        - nginx = name of the image/repository
+        - if you don't provide account or repository name, it assumes it uses the same given name.
+            - nginx/nginx
+        - if you were to create your own account and your own repository and images under it, follow the convention.
+    - image: nginx
+        - default docker registry: docker.io
+            - that means, the docker engine interacts with dockerhub by-default.
+        - `docker run nginx` actually means:
+            - `docker run docker.io/nginx/nginx`
+        - another famous public registry: gcr.io
+    - private registry:
+        - AWS, Azure, GCP services provide private registry by-default when you open an account with them.
+        - login to your private-registry
+            - `docker login {private-registry.io}`
+            - input your username and password to login first.
+        - run the image as below:
+            - `docker run {private-registry.io}/{apps}/{internal-app}`
+    - deploy private registry
+        - we said taht AWS, Azure, GCP services provide private registry by-default when you open an account with them.
+            - but what if you're running the application on-premise and don't have the private registry? (=not use services from Cloud provider): deploy private registry
+                - docker registry itself is an application as well, and it provides an image named as `registry`, and it exposes its api on port 5000.
+                    - `docker run -d -p 5000:5000 --name registry registry:2`
+        - then how to push your own image to your private registry?
+            - use the image tag command to tag your image with the private registry url in it.
+                - `docker image tag my-image localhost:5000/my-image`
+                - `docker push localhost:5000/my-image`
+                    - OR another URL:
+                    - `docker push 192.168.56.100:5000/my-image`
+
+- details: Docker Engine, Docker Storage and Docker Networking
+
+    1. Docker Engine
+        - Install docker engine, it installs:
+            - Docker Daemon (background process that manages docker object, such as container, image or volumes, etc.)
+            - REST API
+            - Docker CLI: use REST API to interact with Daemon
+                - Docker CLI needs not necessarily be in the same host.
+                    - ex: `docker -H={10.123.2.1:2375} run nginx`
+        - Containerization
+            - uses Namespace to isolate workspace.
+                - Process ID, Unix Timesharing, Mount, InterProcess, Network
+            - a container, by default, there is no restriction of how much resource (CPU, memory) a container can use. Hence, a container may end up using all the resources on the underlying host.
+                - but there is a way to pose restriction.
+                - docker uses `CGroups`, or control groups, to restrict the amount of hardware resources allocated to the container.
+                    - `docker run --cpus=.5 ubuntu`
+                    - `docker run --memory=100m ubuntu`
+
+    2. Docker Storage
+        - /var/lib/docker
+            - aufs, containers, image, volumes
+        - layered architecture
+            - ex. `docker build Dockerfile -t eungis/my-app`
+            - each line of instructions in the Dockerfile creates a new layer in the docker image with just the changes compared to the previous layer.
+            - once the build is complete, you cannot modify the contents of the layers (read-only: image layer).
+            - when running the container based on this image, docker creates a container based off of this layer and create a new writable layer on top of the read-only image layer (read-write: container layer).
+                - then what if we want to change the files in the image layer?
+                    - docker automatically creates a copy of the file, modify the contents, and saved in the read-write layer. this is called COW (copy-on-write) mechanism.
+            - you can see the installed things on /var/lib/docker/aufs/diff.
+                - see the disk usage of the diff, and speculate which file is the thing you are searching for: `du -sh *`
+                - compare the list with `docker history {ID or NAME of image}`
+                - `docker system df` command will show you the all the disk usages by docker in total.
+                - if you want to see the breakdown of the disk usage, add -v
+                    - `docker system df -v`, and refer to the UNIQUE_SIZE column.
+                - it's a kind of hack.
+        - volumes
+            - what if we want to preserve the data in the container layer?
+                - volume mounting:
+                    - `docker volume create data_volume`
+                        - it creates a directory under the /var/lib/docker/volumes/ directory.
+                    - then when we run the container with the run command, use the -v option as below:
+                        - `docker -v data_volume:/var/lib/mysql mysql`
+                        - it mounts the data_volume.
+                        - if no data_volume, it will automatically create a directory under the default location as above.
+                - bind mounting:
+                    - bind mounts a directory in any location from the docker host.
+                - --mount option is a more preferrable way to mount the volume. (-v is a old version)
+                    - `docker run --mount type=bind, source=/data/mysql, target=/var/lib/mysql mysql`
+        - docker storage drivers
+            - docker storage drivers enable maintaining the layer-architecture, creating a writable layer, etc.
+            - AUFS, BTRFS, Overlay, Overlay2, Device Mapper
+                - different from underlying OS system
+
+    3. Network
+    - Three networks installed: bridge, none, host
+        - `docker run ubuntu` (default network=bridge)
+            - private internal network created by docker on the host.
+            - all containers are attached to the network by default.
+                - they get internal ip address usually in the range 172.17 series.
+                - By default, Docker uses 172.17.0.0/16 subnet range.
+            - the containers can access each other using internal ip.
+            - to access from the outside world, map the port as we've seen before.
+        - `docker run Ubuntu --network=none`
+            - doesn't have any access to the external network or other containers.
+        - `docker run Ubuntu --network=host`
+            - externally associate the container to the host network.
+            - this takes out any isolation between the docker containers and the docker host.
+                - meaning, if you were to run an web server on port 5000 on the web container, it is automatically accessible on the same port externally without port mapping as the web container uses the host network.
+                - unlike before, you will not be able to run multiple web containers on the same host on the same port. as the port are now common on the host network.
+
+    - What if we wish to isolate the containers within the docker host?
+        - ex. first two web containers on internal network on 172, the others on different network, like 182.
+    - By default, docker only creates one internal bridge network. we can create our own network.
+        - [docker docs](https://docs.docker.com/engine/reference/commandline/network_create/)
+        - `docker network create --driver bridge --subnet 182.18.0.0/16 custom-isolated-network`
+        - list all the networks: `docker network ls`
+        - see the details about the network: `docker network inspect {network}`
+    - Embedded DNS
+        - Containers can reach each other with its name.
+            - not recommended: `mysql.connect(172.17.0.3)`
+            - recommended: `mysql.connect(db)`
+        - docker has its builtin DNS server that helps the container to resolve each other with the container name.
+            - `docker exec {container_1} ping {container_2}`
+            - built-in DNS server always runs at address '127.0.0.11'
+            - {"host":"web", "ip":"172.17.0.2"}, {"host":"db", "ip":"172.17.0.3"}
 
 
-
+- details: Docker Orchestration
+    - Docker Swarm, kubernetes, MESOS
 
 
 ## **Practice**
