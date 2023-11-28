@@ -1,3 +1,9 @@
+# [Docker self-learning]
+- learn from lecture on udemy:
+    - [basic course link](https://www.udemy.com/course/learn-docker/)
+    - [advanced course link](https://www.udemy.com/course/docker-kubernetes-2022/)
+
+
 ## **1. Basic concept of operation system**
 
 operation system consists of two things: os kernel + software
