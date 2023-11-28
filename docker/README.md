@@ -383,6 +383,11 @@ So you won't be able to run the windows based container on a docker host with li
             - this takes out any isolation between the docker containers and the docker host.
                 - meaning, if you were to run an web server on port 5000 on the web container, it is automatically accessible on the same port externally without port mapping as the web container uses the host network.
                 - unlike before, you will not be able to run multiple web containers on the same host on the same port. as the port are now common on the host network.
+            - Examine all network interfaces and verify that a new one was not created.
+                - `docker run --rm -d --network host --name my_nginx nginx`
+                - `ip addr show`
+                - Verify which process is bound to port 80, using the netstat command. You need to use sudo because the process is owned by the Docker daemon user and you otherwise won't be able to see its name or PID.
+                - `sudo netstat -tulpn | grep :80`
 
     - What if we wish to isolate the containers within the docker host?
         - ex. first two web containers on internal network on 172, the others on different network, like 182.
