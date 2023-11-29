@@ -182,6 +182,7 @@ cython_debug/
 
 # folder
 **/data
+**/images
 **/secret
 
 # other
