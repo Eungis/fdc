@@ -62,7 +62,8 @@ class IRChain(LLMChain):
             )
 
             prompt = PromptTemplate.from_template(
-                "Answer the best as you can given the context: {context}"
+                "Answer the best as you can given the context: \n{context}\n"
+                "Answer the question: \n{question}"
             )
 
             # Prepare IRRetriever (Below usage may be different)
