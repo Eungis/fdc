@@ -85,6 +85,7 @@ Systems, 2021**
         - $x = [CLS]u_1[EOU] ... u_{M}[EOU][SEP]r_i[SEP]$
 
     - Performance comparison
+
         ![performance-comparison](./images/performance-comparison.png)
 
         ![without-post-training](./images/without-post-training.png)
