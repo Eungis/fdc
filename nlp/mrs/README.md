@@ -32,6 +32,8 @@
     - etc.: [link](https://github.com/songys/AwesomeKorean_Data)
 - Korean conversational dataset
     - smilegate dataset: [link](https://github.com/smilegate-ai/korean_smile_style_dataset)
+- Korean PLM
+    - github link: [link](https://github.com/sooftware/Korean-PLM)
 
 4. **Main papers**
 - **Contextual Fine-to-Coarse Distillation for Coarse-grained Response Selection in Open-Domain Conversations, ACL 2022**
