@@ -117,7 +117,9 @@
         DROP DATABASE test_db; # drop database
         ```
 
-**[crontab setting]**
+**[Knowledge]**
+
+1. Crontab
 
     - definition:
 
@@ -187,6 +189,6 @@
 
             @hourly: Run once an hour (0 * * * *).
 
-        Example:
+        example:
 
             @daily /path/to/daily_task.sh
