@@ -2,6 +2,7 @@
 - learn from lecture on udemy:
     - [basic course link](https://www.udemy.com/course/learn-docker/)
     - [advanced course link](https://www.udemy.com/course/docker-kubernetes-2022/)
+    - [Dockerfile syntax](https://12bme.tistory.com/588)
 
 
 ## **1. Basic concept of operation system**
