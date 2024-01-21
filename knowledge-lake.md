@@ -192,3 +192,18 @@
         example:
 
             @daily /path/to/daily_task.sh
+
+
+2. pipreqs
+
+    - definition:
+
+        pipreqs is a Python tool that generates a requirements.txt file based on the imports used in the Python project.
+        The purpose of this tool is to help developers manage and document the dependencies of their Python projects
+        by automatically analyzing the code and identifying the external libraries and packages that are imported.
+
+    - usage:
+
+        - `pipreqs /home/project/location`
+            - `pipreqs --ignore package1,package2 /home/project/location`
+            - `pipreqs --savepath /path/to/requirements.txt /home/project/location`
