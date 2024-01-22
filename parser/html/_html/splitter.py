@@ -69,8 +69,7 @@ class HTMLSplitter(object):
 
             # split the soup html into the documents
             splitter = Splitter(soup=soup, length_func=len, token_max=1500)
-            tags = splitter.get_tags_from_soup(soup)
-            chunks = splitter.get_chunks(tags)
+            chunks = splitter.get_chunks()
             new_chunks = splitter.split_chunks(chunks)
             documents = splitter.make_documents(new_chunks)
     """
