@@ -14,3 +14,15 @@ engine = create_engine(
 
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 Base = declarative_base()
+
+
+def get_db():
+    """The get_db generator function is used as a dependency in the read_items route of a FastAPI application.
+    The db argument is automatically injected into the route function,
+    and the generator ensures that the database session is properly managed and closed after the route execution."""
+
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
