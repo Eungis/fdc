@@ -59,6 +59,8 @@ So you won't be able to run the windows based container on a docker host with li
         - `docker logs {ID or NAME}`
     - Pull image from docker hub
         - `docker pull {NAME}`
+    - Check docker memory usage
+        - `docker container stats {ID or NAME}`
 
 - details: docker run "image"
     - docker run "image" command download the image and execute the container, exit the container immediately, as there is no any process is running on that image at the beginning.
@@ -409,6 +411,55 @@ So you won't be able to run the windows based container on a docker host with li
 
 - details: Docker Orchestration
     - Docker Swarm, kubernetes, MESOS
+
+
+## **5. Docker Advance**
+
+- Change the default docker subnet for all docker networks
+    - Go into the location `/etc/docker`, you'll see a file named with `daemon.json`. If not exists, please create it, and edit the file as below:
+        ```
+        {
+            "default-address-pools":
+            [
+                {"base":"192.168.0.0/16","size":24}
+            ]
+        }
+        ```
+    - Restart docker:
+        - `service docker restart`
+    - Check the result:
+        ```bash
+        docker network create foo
+        docker network inspect foo | grep Subnet
+        ```
+
+- Change the docker default data directory
+
+    - On Debian, it will be storing Docker images, containers and volumes in `/var/lib/docker`.
+        - `docker info | grep 'Docker Root Dir'`
+    - Go into the location `/etc/docker`, you'll see a file named with `daemon.json`. If not exists, please create it, and edit the file as below:
+        ```json
+        {
+            "data-root":"/path/to/new/docker-data"
+        }
+        <!-- Example:
+        {
+           "data-root":"/file001/docker"
+        } -->
+        ```
+    - Stop docker by:
+        - `sudo systemctl stop docker`
+    - Verify docker has been stoped:
+        - `ps aux | grep -i docker | grep -v grep`
+    - Copy the files to your new docker directory:
+        - `sudo rsync -axPS /var/lib/docker /path/to/new/docker`
+    - Bring docker back up:
+        - `sudo systemctl start docker`
+        - `docker info | grep 'Docker Root Dir'`
+        - `docker ps`
+    - For safety purposes, delete the existing files:
+        - `sudo rm -r /var/lib/docker`
+
 
 
 ## **Practice**

@@ -164,6 +164,23 @@
                 - `pgrep -l process_name`: List PIDs and process names.
                 - `pgrep -f pattern`: List PIDs of processes whose entire command line matches the specified patten.
 
+        - Start a script after reboot:
+
+            - Run script 300s after reboot
+                - `@reboot sleep 300 && /path/to/reboot_task.sh`
+            - Need to enable crond service via sys v / BSD init style system.
+
+                - In most cases, you don't need to set anything else for cron to initiate the crontab after a reboot. The cron service is typically configured to start automatically when the system boots up, and it will automatically read and execute the crontab entries, including those with the @reboot special string.
+
+                However, it's essential to ensure that the cron service is enabled and running on your system. You can check the status of the cron service using the following command:
+
+                ```
+                systemctl enable crond.service
+                systemctl start crond.service
+                ```
+
+            - details: [link](https://www.cyberciti.biz/faq/linux-execute-cron-job-after-system-reboot/)
+
 
     - commands:
 
@@ -194,6 +211,7 @@
             @daily /path/to/daily_task.sh
 
 
+
 2. pipreqs
 
     - definition:
@@ -207,3 +225,43 @@
         - `pipreqs /home/project/location`
             - `pipreqs --ignore package1,package2 /home/project/location`
             - `pipreqs --savepath /path/to/requirements.txt /home/project/location`
+
+
+3. Concurrency, Threading, Asynchrony
+    - asyncio timeout: https://superfastpython.com/asyncio-wait_for/
+    - set timeout using threading: https://stackoverflow.com/questions/6509261/how-to-use-concurrent-futures-with-timeouts
+    - GIL: https://it-eldorado.tistory.com/160
+    - gc collection: https://medium.com/dmsfordsm/garbage-collection-in-python-777916fd3189
+    - example: https://focalpoint.tistory.com/312
+    - process vs thread:
+    - asyncio vs thread: https://nachwon.github.io/asyncio-and-threading/
+
+4. Nginx, Apache
+
+    - definition:
+
+        Nginx and Apache are both popular web servers, but they have different architectures and approaches to handling web traffic. Here's a comparison of the two:
+
+    - Architecture:
+
+        Apache: Apache follows a traditional <b>multi-threaded</b> or <b>multi-process</b> model, where each connection spawns a new thread or process. Apache's multi-threaded or multi-process model can lead to higher resource consumption under heavy loads. It's generally more memory-intensive.
+
+        Nginx: Nginx follows an event-driven, <b>asynchronous architecture</b>. It uses an event loop to efficiently handle multiple connections within a single thread. Nginx's event-driven architecture is known for its high performance and efficiency, especially under high traffic loads. It's highly scalable and consumes fewer resources compared to Apache.
+
+    - Concurrency and Scalability:
+
+        Apache: Apache can handle a large number of concurrent connections, but its performance may degrade under extremely high loads due to its process/thread creation overhead.
+
+        Nginx: Nginx excels in handling a large number of concurrent connections efficiently due to its event-driven model. It's highly scalable and performs consistently well under heavy traffic.
+
+    - Configuration:
+
+        Apache: Apache's configuration files use a more traditional syntax with separate configuration files for each site or application.
+
+        Nginx: Nginx's configuration syntax is more concise and easier to read. It uses a single configuration file with a hierarchical structure, making it easier to manage complex configurations.
+
+    - Modules and Extensions:
+
+        Apache: Apache has a vast ecosystem of modules and extensions, providing a wide range of functionalities such as URL rewriting, caching, and authentication.
+
+        Nginx: Nginx also has a rich set of modules, but its module ecosystem may not be as extensive as Apache's. However, Nginx's core modules cover most common use cases, and additional functionality can often be achieved through third-party modules or custom configurations.
