@@ -42,8 +42,8 @@
     - There has been less research on the Coarse-grained aspect, and this paper explores this area.
     - It is challenging to use heavy models for the Coarse-grained part because it requires comparison with numerous candidates.
     - Therefore, fundamentally, a model with a multi-tower structure is used rather than a one-tower structure.
-        - **One-tower**: Where the context-response goes into one model and is attended to.
-        - **Multi-tower**: Where the context and response go into separate models, and the resulting feature vectors are utilized.
+        - **One-tower (cross-encoder)**: Where the context-response goes into one model and is attended to.
+        - **Multi-tower (bi-encoder)**: Where the context and response go into separate models, and the resulting feature vectors are utilized.
     - One prominent approach for multi-tower is the bi-encoder method.
         ![poly-encoder](./images/poly-encoder.png)
     - Distillation & three-tower in the paper
