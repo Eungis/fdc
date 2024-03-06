@@ -1,9 +1,12 @@
-import torch
-import random
 import logging
 import pandas as pd
-from typing import List
+import numpy as np
+import torch
+import random
+from typing import List, Dict
+from dataclasses import dataclass
 from torch.utils.data import Dataset
+from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoTokenizer
 
 MODEL_NAME = "klue/roberta-base"
@@ -11,199 +14,234 @@ DATA_ROOT = "../data/"
 DATA_PATH = DATA_ROOT + "smilestyle_dataset.tsv"
 
 
+@dataclass
+class Session:
+    conv: List[str]
+    """Conversation: List of utterences"""
+
+
+class SessionBuilder:
+    def __init__(self, style: str):
+        self.style = style
+        self.logger = self._set_logger()
+
+    def _set_logger(self):
+        logger = logging.getLogger(__name__)
+        return logger
+
+    def build_sessions(self, data_path: str) -> List[List[str]]:
+        # data to load must be separated with `tab`
+        data = pd.read_csv(data_path, sep="\t")
+        styles = data.columns.tolist()
+        if self.style not in styles:
+            raise ValueError(f"Unsupported style. Style must be one of {styles}.\nInput: {self.style}")
+
+        # use specified style conversational data
+        data = data[[self.style]]
+        data["group"] = data[self.style].isnull().cumsum()
+        n_sessions = data["group"].iat[-1] + 1
+        self.logger.debug(f"Number of sessions: {n_sessions}")
+
+        # split data into sessions
+        sessions: List[Session] = []
+        groups = data.groupby("group", as_index=False, group_keys=False)
+
+        for i, group in groups:
+            session = group.dropna()[self.style].tolist()
+            sessions += [Session(conv=session)]
+
+        assert n_sessions == len(sessions)
+        return sessions
+
+    def build_short_sessions(self, sessions: List[Session], ctx_len: int = 4) -> List[Session]:
+        short_sessions = []
+        for session in sessions:
+            for i in range(len(session.conv) - ctx_len + 1):
+                short_sessions.append(Session(conv=session.conv[i : i + ctx_len]))
+        return short_sessions
+
+    def get_utterances(self, sessions: List[Session]):
+        all_utts = set()
+        for session in sessions:
+            for utt in session.conv:
+                all_utts.add(utt)
+        return list(all_utts)
+
+
 class PostDataset(Dataset):
-    def __init__(self, data_path: str, ctx_len: int = 4):
+    def __init__(self, builder: SessionBuilder):
+        # set logger
         self.logger = self._set_logger()
 
         # set tokenizer
-        self.tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+        self.tokenizer = self._set_tokenizer()
+
+        # build sessions
+        self.sessions = builder.build_sessions(data_path=DATA_PATH)
+        self.short_sessions = builder.build_short_sessions(self.sessions, ctx_len=4)
+        self.utts = builder.get_utterances(self.sessions)
+
+    def _set_logger(self):
+        logger = logging.getLogger(__name__)
+        return logger
+
+    def _set_tokenizer(self):
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
         special_tokens = {"sep_token": "<SEP>"}
-        self.tokenizer.add_special_tokens(special_tokens)
+        tokenizer.add_special_tokens(special_tokens)
+        return tokenizer
 
-        # construct sessions
-        sessions = self._construct_sessions(data_path)
+    def _mask_tokens(self, tokens: List, ratio: float = 0.15) -> List:
+        tokens = np.array(tokens)
+        n_mask = int(len(tokens) * ratio)
+        mask_pos = random.sample(range(len(tokens)), n_mask)
 
-        # construct short sessions
-        self.short_sessions = self._construct_short_sessions(sessions, ctx_len=ctx_len)
+        # fancy indexing
+        tokens[mask_pos] = self.tokenizer.mask_token_id
+        tokens = tokens.tolist()
+        return tokens
 
-        # get all utterances
-        self.all_utts = self._get_utterances(sessions)
+    def _get_mask_positions(self, tokens: List) -> List:
+        tokens = np.array(tokens)
+        mask_positions = np.where(tokens == self.tokenizer.mask_token_id)[0].tolist()
+        return mask_positions
+
+    def construct_mlm_inputs(self, short_session: Session) -> Dict[str, list]:
+        corrupt_tokens, output_tokens = [], []
+
+        for i, utt in enumerate(short_session.conv):
+            tokens = self.tokenizer.encode(utt, add_special_tokens=False)
+            masked_tokens = self._mask_tokens(tokens)
+
+            if i == len(short_session.conv) - 1:
+                output_tokens.extend(tokens)
+                corrupt_tokens.extend(masked_tokens)
+            else:
+                output_tokens.extend(tokens + [self.tokenizer.sep_token_id])
+                corrupt_tokens.extend(masked_tokens + [self.tokenizer.sep_token_id])
+
+        corrupt_mask_positions = self._get_mask_positions(corrupt_tokens)
+        return_value = {
+            "output_tokens": output_tokens,
+            "corrupt_tokens": corrupt_tokens,
+            "corrupt_mask_positions": corrupt_mask_positions,
+        }
+
+        return return_value
+
+    def construct_urc_inputs(self, short_session: Session) -> Dict[str, List]:
+        urc_tokens, ctx_utts = [], []
+
+        for i in range(len(short_session.conv)):
+            utt = short_session.conv[i]
+            tokens = self.tokenizer.encode(utt, add_special_tokens=False)
+
+            if i == len(short_session.conv) - 1:
+                urc_tokens += [self.tokenizer.eos_token_id]
+                positive_tokens = [self.tokenizer.cls_token_id] + urc_tokens + tokens
+
+                while True:
+                    random_neg_response = random.choice(self.utts)
+                    if random_neg_response not in ctx_utts:
+                        break
+                random_neg_response_token = self.tokenizer.encode(random_neg_response, add_special_tokens=False)
+                random_tokens = [self.tokenizer.cls_token_id] + urc_tokens + random_neg_response_token
+                ctx_neg_response = random.choice(ctx_utts)
+                ctx_neg_response_token = self.tokenizer.encode(ctx_neg_response, add_special_tokens=False)
+                ctx_neg_tokens = [self.tokenizer.cls_token_id] + urc_tokens + ctx_neg_response_token
+            else:
+                urc_tokens += tokens + [self.tokenizer.sep_token_id]
+
+            ctx_utts.append(utt)
+
+        return_value = {
+            "positive_tokens": positive_tokens,
+            "random_negative_tokens": random_tokens,
+            "context_negative_tokens": ctx_neg_tokens,
+            "urc_labels": [0, 1, 2],
+        }
+        return return_value
 
     def __len__(self):
         return len(self.short_sessions)
 
     def __getitem__(self, idx):
-        # Input data for MLM
-        session = self.short_sessions[idx]
-        mask_ratio = 0.15
-        self.corrupt_tokens = []
-        self.output_tokens = []
-        for i, utt in enumerate(session):
-            original_token = self.tokenizer.encode(utt, add_special_tokens=False)
+        # ---- input data for MLM ---- #
+        short_session = self.short_sessions[idx]
+        mlm_input = self.construct_mlm_inputs(short_session)
 
-            mask_num = int(len(original_token) * mask_ratio)
-            mask_positions = random.sample([x for x in range(len(original_token))], mask_num)
-            corrupt_token = []
-            for pos in range(len(original_token)):
-                if pos in mask_positions:
-                    corrupt_token.append(self.tokenizer.mask_token_id)
-                else:
-                    corrupt_token.append(original_token[pos])
+        # ---- intput data for utterance relevance classification ---- #
+        urc_input = self.construct_urc_inputs(short_session)
 
-            if i == len(session) - 1:
-                self.output_tokens += original_token
-                self.corrupt_tokens += corrupt_token
-            else:
-                self.output_tokens += original_token + [self.tokenizer.sep_token_id]
-                self.corrupt_tokens += corrupt_token + [self.tokenizer.sep_token_id]
+        return_value = dict()
+        return_value["mlm_input"] = mlm_input
+        return_value["urc_input"] = urc_input
 
-        # Label for loss
-        self.corrupt_mask_positions = []
-        for pos in range(len(self.corrupt_tokens)):
-            if self.corrupt_tokens[pos] == self.tokenizer.mask_token_id:
-                self.corrupt_mask_positions.append(pos)
+        return return_value
 
-        # URC
-        urc_tokens = []
-        context_utts = []
-        for i in range(len(session)):
-            utt = session[i]
-            original_token = self.tokenizer.encode(utt, add_special_tokens=False)
-            if i == len(session) - 1:
-                urc_tokens += [self.tokenizer.eos_token_id]
-                self.positive_tokens = [self.tokenizer.cls_token_id] + urc_tokens + original_token
-                while True:
-                    random_neg_response = random.choice(self.all_utts)
-                    if random_neg_response not in context_utts:
-                        break
-                random_neg_response_token = self.tokenizer.encode(random_neg_response, add_special_tokens=False)
-                self.random_tokens = [self.tokenizer.cls_token_id] + urc_tokens + random_neg_response_token
-                context_neg_response = random.choice(context_utts)
-                context_neg_response_token = self.tokenizer.encode(context_neg_response, add_special_tokens=False)
-                self.context_neg_tokens = [self.tokenizer.cls_token_id] + urc_tokens + context_neg_response_token
-            else:
-                urc_tokens += original_token + [self.tokenizer.sep_token_id]
-            context_utts.append(utt)
 
-        return (
-            self.corrupt_tokens,
-            self.output_tokens,
-            self.corrupt_mask_positions,
-            [self.positive_tokens, self.random_tokens, self.context_neg_tokens],
-            [0, 1, 2],
+class PostDatasetCollator:
+    def __init__(self, pad_idx: int, max_length: int):
+        self.pad_idx = pad_idx
+        self.max_length = max_length
+
+    def __call__(self, batch: List[dict]):
+        # |batch| = [
+        # {
+        # 'mlm_input': {
+        # 'output_tokens': list(),
+        # 'corrupt_tokens': list(),
+        # 'corrupt_mask_positions': list()
+        # },
+        # 'urc_input': {
+        # 'positive_tokens': list(),
+        # 'random_negative_tokens': list(),
+        # 'context_negative_tokens': list(),
+        # 'urc_labels': list()
+        # }
+        # }, ...
+        # ]
+
+        # initialize batch output bags
+        mlm_output_tokens_inputs, mlm_corrupt_tokens_inputs = [], []
+        urc_inputs = []
+        mlm_corrupt_mask_positions, urc_labels = [], []
+
+        for sample in batch:
+            mlm_input, urc_input = sample["mlm_input"], sample["urc_input"]
+
+            mlm_output_tokens_inputs.append(torch.tensor(mlm_input["output_tokens"][: self.max_length]))
+            mlm_corrupt_tokens_inputs.append(torch.tensor(mlm_input["corrupt_tokens"][: self.max_length]))
+            mlm_corrupt_mask_positions.append(torch.tensor(mlm_input["corrupt_mask_positions"]))
+
+            urc_inputs.append(torch.tensor(urc_input["positive_tokens"][: self.max_length]))
+            urc_inputs.append(torch.tensor(urc_input["random_negative_tokens"][: self.max_length]))
+            urc_inputs.append(torch.tensor(urc_input["context_negative_tokens"][: self.max_length]))
+            urc_labels.append(torch.tensor(urc_input["urc_labels"]))
+
+        # pad sequence
+        mlm_output_tokens_inputs = pad_sequence(mlm_output_tokens_inputs, batch_first=True, padding_value=self.pad_idx)
+        mlm_corrupt_tokens_inputs = pad_sequence(
+            mlm_corrupt_tokens_inputs, batch_first=True, padding_value=self.pad_idx
         )
 
-    def collate_fn(self, sessions):
-        """
-        input:
-            data: [(session1), (session2), ... ]
-        return:
-            batch_corrupt_tokens: (B, L) padded
-            batch_output_tokens: (B, L) padded
-            batch_corrupt_mask_positions: list
-            batch_urc_inputs: (B, L) padded
-            batch_urc_labels: (B)
-            batch_mlm_attentions
-            batch_urc_attentions
-        """
-        batch_corrupt_tokens, batch_output_tokens, batch_corrupt_mask_positions, batch_urc_inputs, batch_urc_labels = (
-            [],
-            [],
-            [],
-            [],
-            [],
-        )
-        batch_mlm_attentions, batch_urc_attentions = [], []
+        urc_inputs = pad_sequence(urc_inputs, batch_first=True, padding_value=self.pad_idx)
 
-        corrupt_max_len, urc_max_len = 0, 0
-        for session in sessions:
-            corrupt_tokens, output_tokens, corrupt_mask_positions, urc_inputs, urc_labels = session
-            if len(corrupt_tokens) > corrupt_max_len:
-                corrupt_max_len = len(corrupt_tokens)
-            positive_tokens, random_tokens, context_neg_tokens = urc_inputs
-            if max([len(positive_tokens), len(random_tokens), len(context_neg_tokens)]) > urc_max_len:
-                urc_max_len = max([len(positive_tokens), len(random_tokens), len(context_neg_tokens)])
+        # get attention masking positions
+        mlm_attentions = (mlm_output_tokens_inputs != self.pad_idx).long()
+        urc_attentions = (urc_inputs != self.pad_idx).long()
 
-        # add padding token
-        for session in sessions:
-            corrupt_tokens, output_tokens, corrupt_mask_positions, urc_inputs, urc_labels = session
-            # mlm input
-            batch_corrupt_tokens.append(
-                corrupt_tokens + [self.tokenizer.pad_token_id for _ in range(corrupt_max_len - len(corrupt_tokens))]
-            )
-            batch_mlm_attentions.append(
-                [1 for _ in range(len(corrupt_tokens))] + [0 for _ in range(corrupt_max_len - len(corrupt_tokens))]
-            )
-
-            # mlm output
-            batch_output_tokens.append(
-                output_tokens + [self.tokenizer.pad_token_id for _ in range(corrupt_max_len - len(corrupt_tokens))]
-            )
-
-            # mlm label
-            batch_corrupt_mask_positions.append(corrupt_mask_positions)
-
-            # urc input
-            # positive_tokens, random_tokens, context_neg_tokens = urc_inputs
-            for urc_input in urc_inputs:
-                batch_urc_inputs.append(
-                    urc_input + [self.tokenizer.pad_token_id for _ in range(urc_max_len - len(urc_input))]
-                )
-                batch_urc_attentions.append(
-                    [1 for _ in range(len(urc_input))] + [0 for _ in range(urc_max_len - len(urc_input))]
-                )
-
-            # urc label
-            batch_urc_labels += urc_labels
-        return (
-            torch.tensor(batch_corrupt_tokens),
-            torch.tensor(batch_output_tokens),
-            batch_corrupt_mask_positions,
-            torch.tensor(batch_urc_inputs),
-            torch.tensor(batch_urc_labels),
-            torch.tensor(batch_mlm_attentions),
-            torch.tensor(batch_urc_attentions),
-        )
-
-    def _set_logger(self):
-        logging.basicConfig(
-            format="%(message)s",
-            level=logging.DEBUG,
-        )
-        logger = logging.getLogger()
-        return logger
-
-    def _construct_sessions(self, data_path: str) -> List[List[str]]:
-        data = pd.read_csv(data_path, sep="\t")
-        cols = data.columns.tolist()
-        self.logger.debug(f"Columns: {cols}")
-
-        # use formal conversational data
-        data = data[["formal"]]
-        data["group"] = data["formal"].isnull().cumsum()
-        n_sessions = data["group"].iat[-1] + 1
-        self.logger.debug(f"Number of groups: {n_sessions}")
-
-        # split data into sessions
-        sessions: List[List[str]] = []
-        groups = data.groupby("group", as_index=False, group_keys=False)
-
-        for i, group in groups:
-            session = group.dropna()["formal"].tolist()
-            sessions += [session]
-        assert n_sessions == len(sessions)
-        return sessions
-
-    def _construct_short_sessions(self, sessions, ctx_len):
-        short_sessions = []
-        for session in sessions:
-            for i in range(len(session) - ctx_len + 1):
-                short_sessions.append(session[i : i + ctx_len])
-        return short_sessions
-
-    def _get_utterances(self, sessions):
-        all_utts = set()
-        for session in sessions:
-            for utt in session:
-                all_utts.add(utt)
-        return list(all_utts)
+        return_value = {
+            "mlm_inputs": {
+                "output_tokens": mlm_output_tokens_inputs,
+                "corrupt_tokens": mlm_corrupt_tokens_inputs,
+                "mask_positions": mlm_corrupt_mask_positions,
+                "attention_masks": mlm_attentions,
+            },
+            "urc_inputs": {
+                "input_tokens": urc_inputs,
+                "labels": urc_labels,
+                "attention_masks": urc_attentions,
+            },
+        }
+        return return_value
