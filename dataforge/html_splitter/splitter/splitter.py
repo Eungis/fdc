@@ -6,7 +6,7 @@ from typing import Callable, List
 from dataclasses import dataclass, field
 from bs4 import BeautifulSoup
 
-from _html.schema import Tag, Node, Chunk, Document
+from splitter.schema import Tag, Node, Chunk, Document
 
 
 @dataclass

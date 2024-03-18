@@ -1,11 +1,11 @@
-# [🖨️] Parser [🖨️]
+# [🖨️] Dataforge [🖨️]
 
 ## **Description**
 
-- The purpose of the parser theme is to develop tools for preprocessing documents, particularly for exclusive use with large language models (LLM).
+- The purpose of the dataforge theme is to develop tools for preprocessing documents, particularly for exclusive use with large language models (LLM).
     - Unlike general string text, files in formats such as HTML, PDF, PPTX, etc., pose challenges for direct integration into an LLM.
     - Before providing these files to the LLM, it is advisable to preprocess, transform, and parse them into string text for feeding into the model.
-    - The `parser` theme is designed to streamline the preprocessing process. It encompasses modules that cleanse and split files into several documents, enabling direct input into the LLM.
+    - The `dataforge` theme is designed to streamline the preprocessing process. It encompasses modules that cleanse and split files into several documents, enabling direct input into the LLM.
     - Additionally, you can reference it for data preprocessing, especially when creating your own LLM, retrieval model, summarizer model, or any other NLP-based AI model.
 
 

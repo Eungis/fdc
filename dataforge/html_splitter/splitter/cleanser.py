@@ -1,8 +1,8 @@
 from typing import List, Tuple
 from bs4 import BeautifulSoup
 from loguru import logger
-from _html.constant import DEFAULT_VALID_ATTRS, DEFAULT_VALID_TAGS
-from _html.logger import set_logger
+from splitter.constant import DEFAULT_VALID_ATTRS, DEFAULT_VALID_TAGS
+from splitter.logger import set_logger
 
 set_logger(source="cleanser", diagnose=False, to_file=False)
 
