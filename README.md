@@ -7,7 +7,7 @@
     | :---: | :---: | :---: | :--: | :--: |
     | langchain |  <b>analysis of langchain modules</b><br>1. langchain Retrieval wrapping<br>2. custom LLMChain |  fdc/langchain  | True | 23.11 |
     | nlp |  <b>nlp algorithm dev from scratch</b><br>1. skipgram from scratch<br>2. traditional word embedding<br>3. mmr algorithm implementation<br>4. wordnet introduction  |  fdc/nlp  | False | 23.08 |
-    | parser | <b>data parser</b> <br>1. html processing & llm interaction<br>2. pdf processing | fdc/parser | True | 23.11 |
+    | dataforge | <b>data parser</b> <br>1. html processing & llm interaction<br>2. pdf processing | fdc/parser | True | 23.11 |
     | docker | <b>docker basic & advanced usage</b> | fdc/docker | False | 23.11 |
 
 - Additionally, here to upload personally developed and useful modules created during the projects.
