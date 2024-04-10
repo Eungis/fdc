@@ -34,6 +34,9 @@ def _store_user():
 
 
 with DAG("user_processing", start_date=datetime(2022, 1, 1), schedule_interval="@daily", catchup=False) as dag:
+    # For more types of Operator. such as DockerOperator, refer to the blog below:
+    # https://marclamberti.com/blog/how-to-use-dockeroperator-apache-airflow/
+
     create_table = PostgresOperator(
         task_id="create_table",
         postgres_conn_id="postgres",
