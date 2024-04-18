@@ -17,7 +17,7 @@ def response_generator():
 
 
 def single_document_qa(document: dict):
-    with st.popover(f"Multiturn QA", use_container_width=True):
+    with st.popover("Multiturn QA", use_container_width=True):
         st.markdown(f"**{document['title']}**")
         if clear := st.button("Clear Memory", key=f"{document['doc_key']}-clear-btn", on_click=clear_memory):
             st.rerun()
