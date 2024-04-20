@@ -1,0 +1,30 @@
+#!/bin/bash
+
+ES_HOST="localhost"
+ES_PORT="9200"
+ES_ID="elastic"
+ES_PW="elastic"
+ES_CERT="/Users/cho-eungi/fdc/elastic/http_ca.crt"
+
+while true
+do
+ IFS= read -rsn1 char
+ INPUT=$INPUT$char
+ echo $INPUT
+ curl --silent -H "Content-Type: application/json" -H "Connection: close" \
+ --connect-timeout 5 --cacert $ES_CERT -u $ES_ID:$ES_PW \
+ -XGET "https://$ES_HOST:$ES_PORT/autocomplete/_search" --data-raw '{
+     "size": 5,
+     "query": {
+         "multi_match": {
+             "query": "'"$INPUT"'",
+             "type": "bool_prefix",
+             "fields": [
+                 "title",
+                 "title._2gram",
+                 "title._3gram"
+             ]
+         }
+     }
+ }' | jq .hits.hits[]._source.title | grep -i "$INPUT"
+ done
