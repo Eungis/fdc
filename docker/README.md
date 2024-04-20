@@ -547,3 +547,9 @@ So you won't be able to run the windows based container on a docker host with li
 
     then what if you want to override the entrypoint?
     - `docker run --entrypoint sleep2.0 {ID or NAME} 10`
+
+
+3. Useful commands
+
+    - Run commmand as root user outside the docker
+        - `docker exec -u 0 {CONTAINER_ID} apt-get install wget`
