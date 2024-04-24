@@ -16,17 +16,20 @@ def response_generator():
         time.sleep(0.05)
 
 
-def single_document_qa(document: dict):
+def single_document_qa(document: dict, session_id: str):
     with st.popover("Multiturn QA", use_container_width=True):
         st.markdown(f"**{document['title']}**")
-        message_key = f"message-{document['doc_key']}"
+        message_key = f"message-{session_id}-{document['doc_key']}"
 
         if clear := st.button(
-            "Clear Memory", key=f"{document['doc_key']}-clear-btn", on_click=clear_memory, args=(message_key,)
+            "Clear Memory",
+            key=f"{session_id}-{document['doc_key']}-clear-btn",
+            on_click=clear_memory,
+            args=(message_key,),
         ):
             st.rerun()
 
-        prompt = st.chat_input("Your question ... ", key=f"{document['doc_key']}-input-btn")
+        prompt = st.chat_input("Your question ... ", key=f"{session_id}-{document['doc_key']}-input-btn")
 
         # initialize chat history
         if message_key not in st.session_state:

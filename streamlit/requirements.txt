@@ -1,2 +1,4 @@
 streamlit
 pydantic
+pandas
+streamlit_js_eval
