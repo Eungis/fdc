@@ -75,15 +75,17 @@ def clear_memory():
 
 
 def delete_chatlog(session_id: str):
-    LOGGER.debug(f"To delete session_id: {session_id}")
     chat_df = st.session_state.chat_df
     chat_df = chat_df[chat_df["session_id"] != session_id].reset_index(drop=True)
-    st.session_state.chat_df = chat_df
-    LOGGER.debug(f"Remaining session_id: {chat_df.session_id.unique().tolist()}")
     chat_df.to_csv(PREV_CHAT_PATH, index=None)
 
     # reset session_id to new one
     st.session_state.session_id = str(uuid4())
+
+    # reset other session_states
+    st.session_state.chat_df = chat_df
+    st.session_state.session_history = ""
+    st.session_state.prompt = ""
 
 
 def search_documents(question: str):
