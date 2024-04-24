@@ -16,11 +16,11 @@ logging.basicConfig(
 
 # ----- initialize variables ---- #
 LOGGER = logging.getLogger("lge")
-PREV_CHAT_PATH = "./demo/data/previous_chats.csv"
+PREV_CHAT_PATH = "streamlit/demo/data/previous_chats.csv"
 SESSION_ID = st.runtime.scriptrunner.script_run_context.get_script_run_ctx().session_id
 
 # ----- set page configuration ---- #
-st.set_page_config(page_title="GenAI Demo", page_icon="./demo/data/chang.jpeg")
+st.set_page_config(page_title="GenAI Demo", page_icon="streamlit/demo/data/chang.jpeg")
 
 # ----- set custom css ---- #
 st.markdown(
