@@ -1,5 +1,4 @@
-# iterator
-# __iter__, __next__
+# Generator deep dive
 
 import logging
 
@@ -11,7 +10,7 @@ logging.basicConfig(
 
 LOGGER = logging.getLogger(__name__)
 
-
+# __iter__, __next__
 class Counter:
     def __iter__(self):
         iter = Iterator()
@@ -30,7 +29,6 @@ class Iterator:
         self.index += 1
         return n
 
-
 # generator makes things easier to make iterator.
 # python supports coroutine as other languages with `yield`.
 # and the function with yield is called `lightweight (simple) coroutine`.
@@ -40,8 +38,6 @@ class Iterator:
 # Later, send() is added to the coroutine.
 # From this point, the concurrent runnable coroutine is enabled.
 # Data can be transacted to and from caller and callee, which enables the concurrent asynchronous running.
-
-
 def even_generator():
     for i in range(10):
         yield i * 2
@@ -56,7 +52,6 @@ def even_coroutine():
 
 
 ####### yield from #######
-
 
 # case when coroutine calls the sub-coroutine
 # compared to the previous examples, here means:
