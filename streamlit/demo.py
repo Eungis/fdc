@@ -73,6 +73,13 @@ except FileNotFoundError:
 def clear_memory():
     st.session_state.messages = []
 
+def create_new_chat():
+    # reset session_id to new one
+    st.session_state.session_id = str(uuid4())
+
+    # reset other session_states
+    st.session_state.session_history = ""
+    st.session_state.prompt = ""
 
 def delete_chatlog(session_id: str):
     chat_df = st.session_state.chat_df
@@ -112,15 +119,14 @@ col1, col2 = st.sidebar.columns([0.6, 0.4])
 with col1:
     st.title("Previous Chats")
 with col2:
-    new_chat_button = st.button("New Chat", type="primary")
-    if new_chat_button:
-        # if new chat button was hit, refresh entire page
-        streamlit_js_eval(js_expressions="parent.window.location.reload()")
-
+    new_chat_button = st.button("New Chat", type="primary", on_click=create_new_chat)
+        
 chat_df = st.session_state["chat_df"]
 session_history = st.empty()
 
 for i, session_id in enumerate(chat_df["session_id"].unique()):
+    print(f"Current session: {st.session_state.session_id}")
+    print(f"Make sidebar: {session_id}")
     button_label = get_button_label(chat_df, session_id)
 
     # if button is clicked, show chat history below the web title
@@ -217,6 +223,9 @@ if prompt := st.session_state.prompt:
 
         # overwrite existing csv
         chat_df.to_csv(PREV_CHAT_PATH, index=None)
+        
+        # to apply chat_df update at side bar
+        st.rerun()
 
 else:
     documents = None
