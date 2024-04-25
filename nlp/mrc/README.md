@@ -1,4 +1,4 @@
-# [🦁] LION [🦁]
+# MRC (Machine Reading Comprehension)
 
 ## **Project**
 
@@ -108,9 +108,9 @@
     - Trained with two sub-tasks: Next Sentence Prediction and Masked Language Modeling
 
 - ELECTRA (Efficiently Learning an Encoder that classifies Token Replacements Accurately)
-    - introduce RTD (Replaced Token Detection) new pre-training task
-    - problem of Masked Language Modeling (MLM)
-        - only 15% of the tokens are masked -> increase the training cost
+    - Introduce RTD (Replaced Token Detection) new pre-training task
+    - Problem of Masked Language Modeling (MLM)
+        - only 15% of the tokens are masked -> only 15% losses occur -> increase the training cost
         - in reality, no [Mask] token in inference
     - Discriminate real token and fake token
         - all tokens are trained
