@@ -179,6 +179,7 @@ cython_debug/
 *.jpeg
 *.sh
 *.jsonl
+*.crt
 
 # folder
 **/data
