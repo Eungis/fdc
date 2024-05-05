@@ -118,7 +118,7 @@ def tokenize(text: str, vocab: list):
     tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
     words_with_offsets = tokenizer.backend_tokenizer.pre_tokenizer.pre_tokenize_str(text)
     encoded_words = [encode(word, vocab) for word, offset in words_with_offsets]
-    return encoded_words
+    return sum(encoded_words, [])
 
 
 if __name__ == "__main__":
@@ -146,4 +146,4 @@ if __name__ == "__main__":
     logger.info(f"Encode 'Hugging': {encode('Hugging', vocab)}")
     logger.info(f"Encode 'hush': {encode('hush', vocab)}")
 
-    logger.info(tokenize("This is Hugging face course!", vocab))
+    logger.info(tokenize("wordpiece implementation course", vocab))
