@@ -180,6 +180,7 @@ cython_debug/
 *.sh
 *.jsonl
 *.crt
+*.pdf
 
 # folder
 **/data
