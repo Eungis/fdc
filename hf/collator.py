@@ -4,9 +4,10 @@ from datasets import load_dataset
 from transformers.data.data_collator import (
     DefaultDataCollator,
     DataCollatorWithPadding,
-    DataCollatorForTokenClassification
+    DataCollatorForTokenClassification,
+    DataCollatorForSeq2Seq,
 )
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from torch.utils.data import DataLoader, Dataset
 
 transformers.logging.set_verbosity(transformers.logging.WARNING)
@@ -92,7 +93,7 @@ loader = DataLoader(dataset, batch_size=2, collate_fn=data_collator)
 for batch in loader:
     print(batch)
 
-print("========= DataCollatorForTokenClassification =========")  
+print("========= DataCollatorForTokenClassification =========")
 
 # Use NER example
 tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
@@ -114,29 +115,28 @@ for word, label in zip(words, labels):
     max_length = max(len(word), len(full_label))
     line1 += word + " " * (max_length - len(word) + 1)
     line2 += full_label + " " * (max_length - len(full_label) + 1)
-    
+
 print(line1)
 print(line2)
 
 # Prepare datasets
 tokenized_input = tokenizer(
-    words,
-    is_split_into_words=True, # !important in NER cases
-    return_offsets_mapping=True,
-    add_special_tokens=True
+    words, is_split_into_words=True, return_offsets_mapping=True, add_special_tokens=True  # !important in NER cases
 )
 print(tokenized_input.tokens(batch_index=0))
+
 
 def align_labels_with_tokens(labels, word_ids):
     new_labels = []
     for word_id in word_ids:
-        if word_id is None: # special tokens output as None in word_ids()
+        if word_id is None:  # special tokens output as None in word_ids()
             new_labels.append(-100)
         else:
             label = -100 if word_id is None else labels[word_id]
             new_labels.append(label)
         # No prob if unifying B-XXX with I-XXX label
     return new_labels
+
 
 # if tokenizer.is_fast is True, the function below is useful when mapping the word to token.
 # https://huggingface.co/docs/transformers/index#supported-frameworks
@@ -150,10 +150,7 @@ if tokenizer.is_fast:
 
 
 collator = DataCollatorForTokenClassification(
-    tokenizer=tokenizer,
-    padding=True,
-    return_tensors="pt",
-    label_pad_token_id=-100
+    tokenizer=tokenizer, padding=True, return_tensors="pt", label_pad_token_id=-100
 )
 
 dataset = raw_datasets["test"][:10]
@@ -165,7 +162,7 @@ tokenized_inputs = tokenizer(
     return_offsets_mapping=True,
     add_special_tokens=True,
     return_tensors="pt",
-    padding=True
+    padding=True,
 )
 
 # Prepare labels
@@ -173,29 +170,70 @@ word_ids = [tokenized_inputs.word_ids(batch_index=i) for i in range(len(tokenize
 labels = [ner_tag for ner_tag in dataset["ner_tags"]]
 aligned_labels = [align_labels_with_tokens(label, word_id) for word_id, label in zip(word_ids, labels)]
 
-assert all(
-    [
-        len(input_id) == len(label)
-        for input_id, label in zip(tokenized_inputs["input_ids"], aligned_labels)
-    ]
-)
+assert all([len(input_id) == len(label) for input_id, label in zip(tokenized_inputs["input_ids"], aligned_labels)])
 
 dataset = [
     {
         "input_ids": input_ids,
         "labels": labels,
         "attention_mask": attention_mask,
-    } for input_ids, attention_mask, labels in zip(
-        tokenized_inputs["input_ids"],
-        tokenized_inputs["attention_mask"],
-        aligned_labels
+    }
+    for input_ids, attention_mask, labels in zip(
+        tokenized_inputs["input_ids"], tokenized_inputs["attention_mask"], aligned_labels
     )
 ]
-loader = DataLoader(
-    dataset=dataset,
-    batch_size=2,
-    shuffle=True,
-    collate_fn=collator
-)
+loader = DataLoader(dataset=dataset, batch_size=2, shuffle=True, collate_fn=collator)
 
 batch = next(iter(loader))
+
+
+print("========= DataCollatorForSeq2Seq =========")
+
+tokenizer = AutoTokenizer.from_pretrained("t5-small")
+model = AutoModelForSeq2SeqLM.from_pretrained("t5-small")
+
+dataset = load_dataset("opus_books", "en-fr", split="train[:10]")
+
+# mechanism of DataCollatorForSeq2Seq
+inputs = tokenizer([trans["en"] for trans in dataset["translation"][:1]], return_tensors="pt")
+targets = tokenizer([trans["fr"] for trans in dataset["translation"][:1]], return_tensors="pt")
+
+print(tokenizer.convert_ids_to_tokens(inputs["input_ids"][0]))
+print(tokenizer.convert_ids_to_tokens(targets["input_ids"][0]))
+
+decoder_inputs = model.prepare_decoder_input_ids_from_labels(targets["input_ids"])
+print("decoder input start token id: ", model.config.decoder_start_token_id)
+print("tokenizer pad_token_id: ", tokenizer.pad_token_id)
+print(tokenizer.convert_ids_to_tokens(decoder_inputs[0]))
+
+print("Dataset features: ", dataset.features)
+print("Dataset sample: ", dataset[0]["translation"])
+
+inputs = [tran["en"] for tran in dataset["translation"]]
+targets = [tran["fr"] for tran in dataset["translation"]]
+
+model_inputs = tokenizer(
+    inputs, max_length=128, truncation=True, padding=False, return_tensors="np", add_special_tokens=True
+)
+labels = tokenizer(
+    targets, max_length=128, truncation=True, padding=False, return_tensors="np", add_special_tokens=True
+)
+
+datasets = [
+    {"input_ids": input_ids, "attention_mask": attention_mask, "label": label}
+    for input_ids, attention_mask, label in zip(
+        model_inputs["input_ids"], model_inputs["attention_mask"], labels["input_ids"]
+    )
+]
+
+loader = DataLoader(
+    datasets,
+    batch_size=4,
+    collate_fn=DataCollatorForSeq2Seq(tokenizer, model, label_pad_token_id=tokenizer.pad_token_id),
+)
+batch = next(iter(loader))
+
+print(dataset[2])
+print(tokenizer.convert_ids_to_tokens(batch["input_ids"][2]))
+print(tokenizer.convert_ids_to_tokens(batch["labels"][2]))
+print(tokenizer.convert_ids_to_tokens(batch["decoder_input_ids"][2]))
