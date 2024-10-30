@@ -6,6 +6,7 @@ from transformers.data.data_collator import (
     DataCollatorWithPadding,
     DataCollatorForTokenClassification,
     DataCollatorForSeq2Seq,
+    DataCollatorForLanguageModeling,
 )
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from torch.utils.data import DataLoader, Dataset
@@ -237,3 +238,87 @@ print(dataset[2])
 print(tokenizer.convert_ids_to_tokens(batch["input_ids"][2]))
 print(tokenizer.convert_ids_to_tokens(batch["labels"][2]))
 print(tokenizer.convert_ids_to_tokens(batch["decoder_input_ids"][2]))
+
+
+print("========= DataCollatorForLanguageModeling =========")
+# Example:
+#   .. code-block:: python
+
+#       examples = datasets[:2]
+#       batch = pad_without_fast_tokenizer_warning(
+#           tokenizer, examples, return_tensors="pt"
+#       )
+#       special_tokens_mask = batch.pop("special_tokens_mask", None)
+
+#       # make mlm mask
+#       # Prepare masked tokens inputs/labels for masked language modeling:
+#       # 80% MASK, 10% random, 10% original.
+#       inputs = batch["input_ids"]
+#       mlm_probability = .15
+#       labels = inputs.clone()
+
+#       probability_matrix = torch.full(labels.shape, mlm_probability)
+#       special_tokens_mask = special_tokens_mask.bool()
+#       probability_matrix.masked_fill_(special_tokens_mask, 0)
+
+#       masked_indices = torch.bernoulli(probability_matrix).bool()
+#       labels[~masked_indices] = -100
+
+#       # 80% of the time, we replace masked input tokens with tokenizer.mask_token
+#       indices_replaced = torch.bernoulli(torch.full(labels.shape, 0.8)).bool() & masked_indices
+#       inputs[indices_replaced] = tokenizer.mask_token_id
+
+#       # 10% of time, we replace masked input tokens with random word
+#       indices_random = torch.bernoulli(torch.full(labels.shape, .1)).bool() & masked_indices & ~indices_replaced
+#       random_words = torch.randint(0, len(tokenizer), labels.shape)
+#       inputs[indices_random] = random_words[indices_random]
+
+#       batch["input_ids"] = inputs
+#       batch["labels"] = labels
+
+# Load the tokenizer
+tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+# Load a dataset
+dataset = load_dataset("wikitext", "wikitext-2-raw-v1", split="train[:100]")
+dataset = dataset.filter(lambda x: x["text"].strip() != "")
+
+# tokenize dataset
+inputs = [text.strip() for text in dataset["text"]]
+inputs = tokenizer(
+    inputs,
+    padding=False,
+    return_tensors="np",
+    max_length=tokenizer.model_max_length,
+    return_special_tokens_mask=True,
+    truncation=True,
+)
+
+
+def align_special_tokens_mask(tokenizer, input_ids, masks):
+    tokens = tokenizer.convert_ids_to_tokens(input_ids)
+
+    decoded_line, alined_special_mask_line = "", ""
+    for token, mask in zip(tokens, masks):
+        decoded_line += token + " "
+        alined_special_mask_line += str(mask) + len(token) * " "
+
+    print(decoded_line.strip())
+    print(alined_special_mask_line.strip())
+
+
+print("Tokenization results: ", inputs.keys(), type(inputs))
+print(tokenizer.convert_ids_to_tokens(inputs["input_ids"][0]))
+align_special_tokens_mask(tokenizer, inputs["input_ids"][0], inputs["special_tokens_mask"][0])
+
+datasets = [
+    {"input_ids": input_ids, "attention_mask": attention_mask, "special_tokens_mask": special_tokens_mask}
+    for input_ids, attention_mask, special_tokens_mask in zip(
+        inputs["input_ids"], inputs["attention_mask"], inputs["special_tokens_mask"]
+    )
+]
+
+collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=True, mlm_probability=0.15, return_tensors="pt")
+
+loader = DataLoader(dataset=datasets, batch_size=4, collate_fn=collator, shuffle=True)
+batch = next(iter(loader))
+print(batch)
