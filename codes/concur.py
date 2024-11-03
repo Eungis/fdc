@@ -4,35 +4,49 @@ import aiohttp
 import asyncio
 from contextlib import asynccontextmanager
 
+# Create only one session per script
+session = None
+
 
 async def release_session(session: aiohttp.ClientSession):
-    await session.close()
+    if all(
+        # Current_tasks() means the main function that executes asynchronous running
+        # In this case: aquery_multiple_es
+        [t.done() for t in asyncio.all_tasks() - {asyncio.current_task()}]
+    ):
+        print("Release Session ... ")
+        await session.close()
+    else:
+        print("Remaining tasks are not fininshed yet.")
 
 
 @asynccontextmanager
 async def get_session(es_id: str = None, es_pw: str = None, ca_cert_path: str = None):
+    global session
+
     ssl_context = ssl.create_default_context(cafile=ca_cert_path) if ca_cert_path else None
     auth = aiohttp.BasicAuth(es_id, es_pw) if es_id else None
 
-    # TCPConnector helps in maintaining a pool of open connections,
-    # making multiple requests more efficient by reusing these connections instead of creating a new one each time.
-    connector = aiohttp.TCPConnector(
-        limit=100,
-        limit_per_host=5,  # Default: 0 (unlimited), which means limit is the only restriction.
-        force_close=False,
-        enable_cleanup_closed=True,  # Enables background cleanup for closed connections.
-        ttl_dns_cache=300,  # Caches DNS lookups to speed up repeated connections to the same host.
-        # ssl_context=ssl_context, # Here to comment it because the local es server does not require ssl connection
-        # verify_ssl=True,
-    )
+    if session is None or session.closed:
+        # TCPConnector helps in maintaining a pool of open connections,
+        # making multiple requests more efficient by reusing these connections instead of creating a new one each time.
+        connector = aiohttp.TCPConnector(
+            limit=100,
+            limit_per_host=5,  # Default: 0 (unlimited), which means limit is the only restriction.
+            force_close=False,
+            enable_cleanup_closed=True,  # Enables background cleanup for closed connections.
+            ttl_dns_cache=300,  # Caches DNS lookups to speed up repeated connections to the same host.
+            # ssl_context=ssl_context, # Here to comment it because the local es server does not require ssl connection
+            # verify_ssl=True,
+        )
 
-    # Create session if no session specified
-    session = aiohttp.ClientSession(
-        connector=connector,
-        timeout=aiohttp.ClientTimeout(total=120),
-        raise_for_status=True,
-        # auth=auth, # # Here to comment it because the local es server does not require authentication
-    )
+        # Create session if no session specified
+        session = aiohttp.ClientSession(
+            connector=connector,
+            timeout=aiohttp.ClientTimeout(total=120),
+            raise_for_status=True,
+            # auth=auth, # # Here to comment it because the local es server does not require authentication
+        )
 
     try:
         yield session
@@ -62,6 +76,8 @@ async def aquery_es(
 
 
 async def aquery_multiple_es():
+    global session
+
     # Create tasks for all messages
     tasks = [
         aquery_es(
@@ -76,6 +92,12 @@ async def aquery_multiple_es():
     ]
 
     responses = await asyncio.gather(*tasks)
+
+    while asyncio.all_tasks():
+        await release_session(session)
+        if session.closed:
+            break
+
     return responses
 
 
