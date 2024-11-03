@@ -1,0 +1,20 @@
+base_person: &base
+  city: seoul
+  country: south korea
+
+Person:
+  <<: *base
+  name: &name John
+  age: 29
+  isMale: true
+  stuff:
+    - car
+    - laptop
+    - bike
+  food: [pizza, donuts, coke]
+  friends:
+    - name: Jane
+      age: 19
+    - name: Mike
+      age: 20
+  self: *name

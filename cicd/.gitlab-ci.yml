@@ -1,0 +1,157 @@
+stages:
+  - build
+  - test
+  - deploy review
+  - deploy staging
+  - deploy production
+  - production tests
+
+variables:
+  STAGING_DOMAIN: bic-domain-staging.surge.sh
+  PRODUCTION_DOMAIN: bic-domain.surge.sh
+
+# In Gitlab CI it is possible to create jobs that are only executed when a specific condition is fulfilled. 
+# For example if we want to run a job only when the pipeline is triggered by a schedule, we can configure it with:
+# only:
+#  - schedules
+# The same goes the other way around. If you don't want to run a job when the pipeline is triggered by a scheduled run, simply add to the respective jobs:
+# except:
+#  - schedules
+
+# You can simply disable jobs by adding "." in front of each job without commenting the code.
+# It's especially useful when you create the template with yaml anchor.
+# ex. .build website
+
+
+build website:
+  image: node:18
+  stage: build
+  # Gitlab offers the possibility of disabling the cache for the jobs that do not need it.
+  # This can be done by using the configuration  cache: {} inside the jobs that you don't want to use cache.
+  # The default cache behaviour in Gitlab CI is to download the files at the start of the job execution (pull), and to re-upload them at the end (push). This allows any changes made by the job to be persisted for future runs (known as the pull-push cache policy).
+  # Gitlab offers the possibility of defining how a job should work with cache by setting a policy. So if we want to skip uploading cache file, we can use the setting in the cache configuration
+  # ex. policy: pull
+  only:
+    - main
+    - merge_requests
+  cache:
+    # CI_COMMIT_REF_SLUG: current branch
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - node_modules/
+  script:
+    - echo $CI_COMMIT_SHORT_SHA
+    - npm install
+    - npm install -g gatsby-cli
+    # Here we suppose that you have already created a new gatsby project
+    # &: run gatsby server in background
+    - gatsby build
+  artifacts:
+    paths:
+      - ./public
+
+test artifacts:
+  image: alpine
+  stage: test
+  only:
+    - main
+    - merge_requests
+  script:
+    - grep -q "Gatsby" ./public/index.html
+
+test website:
+# Specify the docker image here to use
+# Defining image outside of a specific job makes it have a global effect. So all the jobs (unless other specified) will be using that respective Docker image 
+  image: node:18
+  stage: test
+  only:
+    - main
+    - merge_requests
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - node_modules/
+  script:
+    - npm install
+    - npm install -g gatsby-cli
+    - gatsby serve &
+    - sleep 3
+    # -q: quiet mode of grep
+    # You can use "echo $?" to check the exit code in case of quiet mode
+    # However, script below would throw an error because grep will close the read stream after
+    # it gets what it wants, but curl doesn't expect this and it would raise "Failed writing body" error.
+    # - curl "http://localhost:9000" | grep -q "Gatsby"
+    # Hence we have to change the script as below so that the grep doesn't affect the curl command until it reads the whole page.
+    - curl "http://localhost:9000" | tac | tac | grep -q "Gatsby"
+
+deploy review:
+  stage: deploy review
+  image: node:18
+  environment:
+    name: review/$CI_COMMIT_REF_NAME
+    url: https://bic-domain-$CI_ENVIRONMENT_SLUG.surge.sh
+  only:
+    - merge_requests
+  script:
+    - npm install --global surge
+    # You have to have your SCRIPT_LOGIN and SCRIPT_TOKEN variables defined in gitlab `variables`
+    - surge ./public --domain https://bic-domain-$CI_ENVIRONMENT_SLUG.surge.sh
+
+stop review:
+  stage: deploy review
+  image: node:18
+  only:
+    - merge_requests
+  environment:
+    name: review/$CI_COMMIT_REF_NAME
+    action: stop
+  variables:
+    # it doesn't clone git repository
+    GIT_STRATEGY: none
+  when: manual
+  script:
+    - npm install --global surge
+    - surge teardown bic-domain-$CI_ENVIRONMENT_SLUG.surge.sh
+
+.deploy_template: &deploy
+  only:
+    - main
+  script:
+    - npm install --global surge
+    # You have to have your SCRIPT_LOGIN and SCRIPT_TOKEN variables defined in gitlab `variables`
+    - surge ./public --domain $DOMAIN
+    - sleep 5
+    - curl -s "https://$DOMAIN"
+  environment:
+    url: "https://$DOMAIN"
+
+deploy staging:
+  <<: *deploy
+  stage: deploy staging
+  image: node:18
+  variables:
+    DOMAIN: $STAGING_DOMAIN
+  environment:
+    name: staging
+
+deploy production:
+  <<: *deploy
+  stage: deploy production
+  image: node:18
+  variables:
+    DOMAIN: $PRODUCTION_DOMAIN
+  environment:
+    name: production
+    
+  when: manual
+  # blocks next jobs to be executed if the current job has not been executed and passed yet.
+  allow_failure: false
+
+production tests:
+  stage: production tests
+  image: alpine
+  only:
+    - main
+  script:
+    - apk add --no-cache curl
+    - curl -s "https://$PRODUCTION_DOMAIN"
