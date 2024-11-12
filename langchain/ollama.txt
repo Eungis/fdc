@@ -1,0 +1,48 @@
+## Way to make openai compatible api
+# https://github.com/iaalm/llama-api-server/tree/main
+
+## Ollama model list
+# https://ollama.com/library
+
+## Ollama cls
+ollama serve
+# your new public key is:
+# ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM7+hXPDQDhEZKe8BTZCoYscosrQZM3ZNN1W/nVwEGbk
+
+## Pull model from ollama hub
+ollama pull llama3.2-vision
+
+## Install python package
+pip3 install ollama 
+
+## Control
+ollama show llama3.2-vision
+ollama show --modelfile llama3.2-vision
+
+## Python Ollama
+
+```python
+import ollama
+response = ollama.chat(
+    model='llama3.2-vision',
+    messages=[{
+        'role': 'user',
+        'content': 'What is in this image?',
+        'images': ['./ad.png']
+    }]
+)
+```
+
+```python
+from langchain_community.chat_models import ChatOllama
+model = ChatOllama(
+    base_url="http://localhost:11434",
+    model="llama3.2-vision",
+    temperature=0
+)
+messages = [
+    ("system", "You are a helpful translator. Translate the user sentence to French."),
+    ("human", "I love programming."),
+]
+response = model.invoke(messages)
+```
